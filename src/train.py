@@ -46,7 +46,7 @@ model = DynamicConvDecoder(config)
 
 # Prepare the data
 json_dir = './sample/sample_json'
-image_dir = './sample_images'
+image_dir = './sample/sample_images'
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 train_dataset = NYTimesDataset(json_dir, image_dir, tokenizer)
 train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
