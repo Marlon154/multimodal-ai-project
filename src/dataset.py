@@ -79,8 +79,8 @@ class NYTimesDataset(Dataset):
 
 
 # Create an instance of the NYTimesDataset
-json_dir = '/home/marlon/Git/sample/sample_json'
-image_dir = '/home/marlon/Git/sample/sample_images'
+json_dir = './sample/sample_json'
+image_dir = './sample/sample_images'
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 dataset = NYTimesDataset(json_dir, image_dir, tokenizer)
 

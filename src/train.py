@@ -4,8 +4,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from transformers import BertTokenizer
 
-from src.decoder_faces_objects import DynamicConvDecoderConfig, DynamicConvDecoder
-from src.dataset import NYTimesDataset
+from decoder_faces_objects import (DynamicConvDecoderConfig, DynamicConvDecoder)
+from dataset import NYTimesDataset
 
 # Create an instance of the DynamicConvDecoder model
 config = DynamicConvDecoderConfig(

@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import PreTrainedModel, PretrainedConfig
+from transformers import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.models.bert.modeling_bert import BertEmbeddings
-from tell.modules import (AdaptiveSoftmax, DynamicConv1dTBC, GehringLinear,
-                          LightweightConv1dTBC, MultiHeadAttention)
+#from tell.modules import (AdaptiveSoftmax, DynamicConv1dTBC, GehringLinear, LightweightConv1dTBC, MultiHeadAttention)
+from softmax import AdaptiveSoftmax
 
 
 class DynamicConvDecoderConfig(PretrainedConfig):
