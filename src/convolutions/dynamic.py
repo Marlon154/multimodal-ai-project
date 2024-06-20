@@ -9,7 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from tell.utils import get_incremental_state, set_incremental_state
+from collections import defaultdict
+from typing import Dict
 
 from .unfold import unfold1d
 

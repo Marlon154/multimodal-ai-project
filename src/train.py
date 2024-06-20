@@ -28,7 +28,7 @@ config = DynamicConvDecoderConfig(
     relu_dropout=0.1,
     input_dropout=0.1,
     decoder_normalize_before=False,
-    decoder_kernel_size_list=[3, 7, 15],
+    decoder_kernel_size_list=[3, 7, 15, 31, 63, 127],
     adaptive_softmax_cutoff=None,
     tie_adaptive_weights=False,
     adaptive_softmax_dropout=0.0,
@@ -49,7 +49,7 @@ json_dir = './sample/sample_json'
 image_dir = './sample/sample_images'
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 train_dataset = NYTimesDataset(json_dir, image_dir, tokenizer)
-train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
 
 # Define the optimizer and loss function
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
@@ -63,19 +63,19 @@ for epoch in range(num_epochs):
     total_loss = 0
 
     for batch in train_dataloader:
-        headline_input_ids = batch['headline_input_ids']
-        headline_attention_mask = batch['headline_attention_mask']
+        caption_input_ids = batch['caption_input_ids']
+        caption_attention_mask = batch['caption_attention_mask']
         article_input_ids = batch['article_input_ids']
         article_attention_mask = batch['article_attention_mask']
-        images = batch['images']
+        image = batch['image']
         face_embeddings = batch['face_embeddings']
         object_embeddings = batch['object_embeddings']
 
         optimizer.zero_grad()
 
         # Forward pass
-        output = model(prev_target=article_input_ids, contexts={
-            'image': images,
+        output = model(prev_target=caption_input_ids, contexts={
+            'image': image,
             'article': article_input_ids,
             'faces': face_embeddings,
             'obj': object_embeddings,
@@ -86,7 +86,7 @@ for epoch in range(num_epochs):
         })
 
         # Compute loss
-        loss = criterion(output.last_hidden_state.view(-1, config.vocab_size), article_input_ids.view(-1))
+        loss = criterion(output.last_hidden_state.view(-1, config.vocab_size), caption_input_ids.view(-1))
 
         # Backward pass and optimization
         loss.backward()

@@ -1,10 +1,13 @@
 import os
 import json
+
+import numpy as np
 from PIL import Image
 
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import BertTokenizer
+
 
 class NYTimesDataset(Dataset):
     def __init__(self, json_dir, image_dir, tokenizer, max_seq_length=512, max_image_size=512):
@@ -25,38 +28,44 @@ class NYTimesDataset(Dataset):
 
         # Extract relevant fields from the JSON data
         headline = data['headline']['main']
-        article = ' '.join([section['text'] for section in data['parsed_section']])
-        image_hashes = [image['hash'] for image in data['multimedia'] if image['type'] == 'image']
+        article = ' '.join([section['text'] for section in data['parsed_section'] if section['type'] == 'paragraph'])
 
-        # Tokenize headline and article
+        for section in data['parsed_section']:
+            if section['type'] == 'caption':
+                caption = section['text']
+                if 'hash' in section:
+                    image_hash = section['hash']
+                else:
+                    continue
+                if 'facenet_details' in section:
+                    face_embeddings = section['facenet_details']['embeddings']
+                else:
+                    face_embeddings = []
+                if 'object_details' in section:
+                    object_embeddings = section['object_details']['embeddings']
+                else:
+                    object_embeddings = []
+                break
+        else:
+            # Skip this sample if no suitable caption is found
+            return self.__getitem__((idx + 1) % len(self))
+
+        # Tokenize headline, caption, and article
         headline_inputs = self.tokenizer(headline, add_special_tokens=True, max_length=self.max_seq_length,
                                          padding='max_length', truncation=True, return_tensors='pt')
+        caption_inputs = self.tokenizer(caption, add_special_tokens=True, max_length=self.max_seq_length,
+                                        padding='max_length', truncation=True, return_tensors='pt')
         article_inputs = self.tokenizer(article, add_special_tokens=True, max_length=self.max_seq_length,
                                         padding='max_length', truncation=True, return_tensors='pt')
 
-        # Load and preprocess images
-        images = []
-        for hash in image_hashes:
-            image_path = os.path.join(self.image_dir, hash)
-            image = Image.open(image_path).convert('RGB')
-            image = image.resize((self.max_image_size, self.max_image_size))
-            image = torch.tensor(image).permute(2, 0, 1)  # Convert to torch tensor and transpose to (C, H, W)
-            images.append(image)
-
-        if len(images) == 0:
-            images = torch.zeros(1, 3, self.max_image_size, self.max_image_size)
-        else:
-            images = torch.stack(images)
+        # Load and preprocess image
+        image_path = os.path.join(self.image_dir, image_hash)
+        image = Image.open(image_path + ".jpg").convert('RGB')
+        image = image.resize((self.max_image_size, self.max_image_size))
+        image = np.array(image)
+        image = torch.tensor(image).permute(2, 0, 1)  # Convert to torch tensor and transpose to (C, H, W)
 
         # Extract face and object embeddings
-        face_embeddings = []
-        object_embeddings = []
-        for section in data['parsed_section']:
-            if 'facenet_details' in section:
-                face_embeddings.extend(section['facenet_details']['embeddings'])
-            if 'object_details' in section:
-                object_embeddings.extend(section['object_details']['embeddings'])
-
         if len(face_embeddings) == 0:
             face_embeddings = torch.zeros(1, 512)  # Assuming face embeddings have 512 dimensions
         else:
@@ -68,13 +77,15 @@ class NYTimesDataset(Dataset):
             object_embeddings = torch.tensor(object_embeddings)
 
         return {
-            'headline_input_ids': headline_inputs['input_ids'].squeeze(),
-            'headline_attention_mask': headline_inputs['attention_mask'].squeeze(),
-            'article_input_ids': article_inputs['input_ids'].squeeze(),
-            'article_attention_mask': article_inputs['attention_mask'].squeeze(),
-            'images': images,
-            'face_embeddings': face_embeddings,
-            'object_embeddings': object_embeddings
+            'headline_input_ids': headline_inputs['input_ids'].squeeze().to(torch.float32),
+            'headline_attention_mask': headline_inputs['attention_mask'].squeeze().to(torch.float32),
+            'caption_input_ids': caption_inputs['input_ids'].squeeze().to(torch.float32),
+            'caption_attention_mask': caption_inputs['attention_mask'].squeeze().to(torch.float32),
+            'article_input_ids': article_inputs['input_ids'].squeeze().to(torch.float32),
+            'article_attention_mask': article_inputs['attention_mask'].squeeze().to(torch.float32),
+            'image': image.to(torch.float32),
+            'face_embeddings': face_embeddings.to(torch.float32),
+            'object_embeddings': object_embeddings.to(torch.float32)
         }
 
 

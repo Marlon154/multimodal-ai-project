@@ -4,9 +4,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from tell.modules.beam import BeamableMM
-from tell.modules.linear import GehringLinear
-
+# from tell.modules.beam import BeamableMM
+# from tell.modules.linear import GehringLinear
+# from .beam import BeamableMM
+# from .linear import GehringLinear
 
 class AttentionLayer(nn.Module):
     def __init__(self, conv_channels, embed_dim, bmm=None):
