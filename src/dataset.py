@@ -10,13 +10,15 @@ from transformers import BertTokenizer
 
 
 class NYTimesDataset(Dataset):
-    def __init__(self, json_dir, image_dir, tokenizer, max_seq_length=512, max_image_size=512):
+    def __init__(self, json_dir, image_dir, tokenizer, max_seq_length=512, max_image_size=512, max_images=4, transform=None):
         self.json_dir = json_dir
         self.image_dir = image_dir
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
         self.max_image_size = max_image_size
         self.json_files = [file for file in os.listdir(json_dir) if file.endswith('.json')]
+        self.max_images = max_images
+        self.transform = transform
 
     def __len__(self):
         return len(self.json_files)
@@ -30,6 +32,7 @@ class NYTimesDataset(Dataset):
         headline = data['headline']['main']
         article = ' '.join([section['text'] for section in data['parsed_section'] if section['type'] == 'paragraph'])
 
+        # Iterate over sections until the one caption is found
         for section in data['parsed_section']:
             if section['type'] == 'caption':
                 caption = section['text']
@@ -38,9 +41,11 @@ class NYTimesDataset(Dataset):
                 else:
                     continue
                 if 'facenet_details' in section:
-                    face_embeddings = section['facenet_details']['embeddings']
+                    face_embeddings = section['facenet_details']['embeddings'][0:self.max_images]
                 else:
                     face_embeddings = []
+
+                # Object_details does not occure in Sample
                 if 'object_details' in section:
                     object_embeddings = section['object_details']['embeddings']
                 else:
@@ -67,9 +72,11 @@ class NYTimesDataset(Dataset):
 
         # Extract face and object embeddings
         if len(face_embeddings) == 0:
-            face_embeddings = torch.zeros(1, 512)  # Assuming face embeddings have 512 dimensions
+            face_embeddings = torch.zeros(self.max_images, 512)  # Assuming face embeddings have 512 dimensions
         else:
             face_embeddings = torch.tensor(face_embeddings)
+            if len(face_embeddings) < self.max_images:
+                face_embeddings = torch.cat((face_embeddings, torch.zeros(self.max_images - len(face_embeddings), 512)))
 
         if len(object_embeddings) == 0:
             object_embeddings = torch.zeros(1, 512)  # Assuming object embeddings have 512 dimensions
