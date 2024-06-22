@@ -2,6 +2,7 @@
 ## Setup for Sample Testing
 > [MongoDB Sample](https://drive.google.com/file/d/1yCZ0Qp21sDa7fnZvI8mnvKvD83UjqaIq/view?usp=sharing)
 > [Image Sample]()
+> **IMPORTANT**: change `self.client.nytimes` to `self.client.nytimes_sample` in the source code when using the sample file 
 ```
 # Download mongo db sample
 # move it to the ./data/dump folder
