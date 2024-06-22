@@ -19,5 +19,10 @@
 > make sure to adjust database, file and network names
 ```
 docker run -it --rm -v ./dump:/dump --network data_mongo_net mongo bash
-mongodump --host mongodb-mongo_db-1 --port 27017 --username root --password secure_pw --authenticationDatabase admin --db toy_db --gzip --archive=/dump/dump.gz
+mongodump --host data-mongo_db-1 --port 27017 --username root --password secure_pw --authenticationDatabase admin --db nytimes --gzip --archive=/dump/nytimes-2020-04-21_sample.gz
 ```
+## MongoDB
+> contains three collections: 'articles', 'images', 'objects'
+> all columns can be found in `columns.txt`
+> 'foreign key'-linkage:
+>   `objects._id -> images._id & images.captions.id -> articles._id`
