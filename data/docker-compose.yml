@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  mongo_db:
+    image: mongo
+    restart: always
+    networks:
+      - mongo_net
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: secure_pw 
+    volumes:
+      - ./export:/data/db
+
+  mongo_restore:
+    image: mongo
+    depends_on:
+      - mongo_db
+    networks:
+      - mongo_net
+    # command: mongorestore --db toy_db --username root --password secure_pw --authenticationDatabase admin --host mongo_db --port 27017 --drop --gzip --archive=/dump/dump.gz
+    # command: mongorestore --db nytimes --username root --password secure_pw --authenticationDatabase admin --host mongo_db --port 27017 --drop --archive=/dump/nytimes-2020-04-21
+    command: mongorestore --db nytimes --username root --password secure_pw --authenticationDatabase admin --host mongo_db --port 27017 --drop --gzip --archive=/dump/nytimes-2020-04-21_sample.gz
+    volumes:
+      - ./dump:/dump
+  
+  mongo_express:
+    image: mongo-express
+    restart: always
+    depends_on: 
+      - mongo_db
+    networks:
+      - mongo_net
+    ports:
+      - 8081:8081
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: secure_pw 
+      ME_CONFIG_MONGODB_URL: mongodb://root:secure_pw@mongo_db:27017/
+      ME_CONFIG_BASICAUTH: false
+
+networks:
+  mongo_net:
+    driver: bridge
