@@ -4,11 +4,11 @@ import torch.nn.functional as F
 from transformers import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.models.bert.modeling_bert import BertEmbeddings
-#from tell.modules import (AdaptiveSoftmax, DynamicConv1dTBC, GehringLinear, LightweightConv1dTBC, MultiHeadAttention)
 from softmax import AdaptiveSoftmax
 from linear import GehringLinear
 from convolutions import DynamicConv1dTBC, LightweightConv1dTBC
 from attention import MultiHeadAttention
+
 
 class DynamicConvDecoderConfig(PretrainedConfig):
     def __init__(self, vocab_size, max_position_embeddings, hidden_size, num_attention_heads,
@@ -110,7 +110,7 @@ class DynamicConvDecoder(nn.Module):
 
     def forward(self, prev_target, contexts, incremental_state=None, use_layers=None, **kwargs):
         X = self.embeddings(prev_target.long())
-        X = self.dropout(X)
+        X = self.dropout(X)  # self.dropout(X)
         X = X.transpose(0, 1)
         attn = None
 

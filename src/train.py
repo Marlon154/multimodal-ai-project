@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from transformers import BertTokenizer
+from transformers import RobertaTokenizer
 
 from decoder_faces_objects import (DynamicConvDecoderConfig, DynamicConvDecoder)
 from dataset import NYTimesDataset
@@ -47,7 +47,7 @@ model = DynamicConvDecoder(config)
 # Prepare the data
 json_dir = './sample/sample_json'
 image_dir = './sample/sample_images'
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+tokenizer = RobertaTokenizer.from_pretrained('FacebookAI/roberta-base')
 train_dataset = NYTimesDataset(json_dir, image_dir, tokenizer)
 train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
 
