@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import PreTrainedModel, PretrainedConfig
+from transformers import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.models.bert.modeling_bert import BertEmbeddings
-from tell.modules import (AdaptiveSoftmax, DynamicConv1dTBC, GehringLinear,
-                          LightweightConv1dTBC, MultiHeadAttention)
+from softmax import AdaptiveSoftmax
+from linear import GehringLinear
+from convolutions import DynamicConv1dTBC, LightweightConv1dTBC
+from attention import MultiHeadAttention
 
 
 class DynamicConvDecoderConfig(PretrainedConfig):
@@ -50,12 +52,15 @@ class DynamicConvDecoderConfig(PretrainedConfig):
         self.namespace = namespace
         self.section_attn = section_attn
         self.article_embed_size = article_embed_size
+        self.type_vocab_size = 1
+        self.layer_norm_eps = 1e-12
 
 
 class DynamicConvDecoder(nn.Module):
     config_class = DynamicConvDecoderConfig
 
     def __init__(self, config):
+        super().__init__()
         self.embeddings = BertEmbeddings(config)   # todo p4 make generic
         self.layers = nn.ModuleList([DynamicConvDecoderLayer(config, kernel_size=config.decoder_kernel_size_list[i])
                                      for i in range(config.decoder_layers)])
@@ -66,7 +71,6 @@ class DynamicConvDecoder(nn.Module):
 
         embed_dim = config.hidden_size
         output_embed_dim = config.hidden_size
-        super().__init__(config)
 
         def eval_str_list(x, type=float):
             if x is None:
@@ -105,8 +109,8 @@ class DynamicConvDecoder(nn.Module):
             self.layer_norm = nn.LayerNorm(embed_dim)
 
     def forward(self, prev_target, contexts, incremental_state=None, use_layers=None, **kwargs):
-        X = self.embeddings(prev_target)
-        X = self.dropout(X)
+        X = self.embeddings(prev_target.long())
+        X = self.dropout(X)  # self.dropout(X)
         X = X.transpose(0, 1)
         attn = None
 
