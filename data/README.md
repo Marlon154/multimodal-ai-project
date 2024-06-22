@@ -28,6 +28,7 @@ mongodump --host data-mongo_db-1 --port 27017 --username root --password secure_
 - all columns can be found in `columns.txt`
 - 'foreign key'-linkage:
     - `objects._id -> images._id & images.captions.id -> articles._id`
+- **IMPORTANT**: change `self.client.nytimes` to `self.client.nytimes_sample` when using the sample file 
 ```
 docker compose up -d # start docker containers
 # access gui at localhost:8081
