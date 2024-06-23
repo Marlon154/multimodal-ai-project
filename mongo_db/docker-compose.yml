@@ -3,7 +3,6 @@ version: '3.8'
 services:
   mongo_db:
     image: mongo
-    restart: always
     networks:
       - mongo_net
     ports:
@@ -27,7 +26,6 @@ services:
   
   mongo_express:
     image: mongo-express
-    restart: always
     depends_on: 
       - mongo_db
     networks:

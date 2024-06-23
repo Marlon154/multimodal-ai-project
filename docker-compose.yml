@@ -1,0 +1,7 @@
+services:
+  tnt-training:
+    image: tnt-training 
+    networks:
+      - mongo_net
+    volumes:
+      - ./data:/app/data

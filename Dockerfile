@@ -50,17 +50,9 @@ RUN pip install nltk pymongo
 RUN python -m nltk.downloader punkt
 # Install the project
 WORKDIR /app
-COPY src/ /app
-COPY scripts/ /app
-COPY expt/ /app
-COPY *.* /app
+COPY . /app
 RUN python setup.py develop
 
-# Expose the MongoDB port
-EXPOSE 27017
-
-# Run the MongoDB service and then start the training
-# mongod --bind_ip_all --dbpath /data/db & \
 RUN pip install ptvsd
 RUN pip install pudb
 RUN pip install docopt==0.6.2
