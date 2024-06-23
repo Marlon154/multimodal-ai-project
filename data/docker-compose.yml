@@ -12,7 +12,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: secure_pw 
     volumes:
-      - ./export:/data/db
+      - export:/data/db
 
   # mongo_restore:
   #   image: mongo
