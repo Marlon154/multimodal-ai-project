@@ -130,7 +130,7 @@ class CaptionGenerator(nn.Module):
 
 
 class TransformAndTellModel(nn.Module):
-    def __init__(self, vocab_size, article_length, d_model=512, num_layers=6, num_heads=8, dff=2048, rate=0.1):
+    def __init__(self, vocab_size, article_length=512, d_model=512, num_layers=6, num_heads=8, dff=2048, rate=0.1):
         super().__init__()
         self.roberta = RobertaModel.from_pretrained('roberta-base')
         self.resnet = resnet152(pretrained=True)
@@ -214,27 +214,3 @@ training_args = TrainingArguments(
     greater_is_better=True,
     no_cuda=False,
 )
-
-# Define the data collator
-data_collator = transformers.DataCollatorForSeq2Seq(
-    tokenizer=RobertaTokenizer.from_pretrained("roberta-base"),
-    model=model,
-    padding=True,
-    return_tensors="pt",
-)
-
-# Define the trainer
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=dataset["train"],
-    eval_dataset=dataset["valid"],
-    data_collator=data_collator,
-    tokenizer=RobertaTokenizer.from_pretrained("roberta-base"),
-)
-
-# Train the model
-trainer.train()
-
-# Evaluate the model
-trainer.evaluate()

@@ -1,0 +1,32 @@
+FROM continuumio/anaconda3:2022.10
+
+# Install necessary build tools and dependencies
+RUN apt-get update && \
+    apt-get install -y build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY environment.yml environment.yml
+
+# Create and activate the conda environment
+RUN conda env create -f environment.yml
+RUN echo "source activate tell" > ~/.bashrc
+ENV PATH /opt/conda/envs/tell/bin:$PATH
+
+# RUN pip install --no-cache-dir pyzmq==23.0.0 pygments==2.12.0 urllib3==1.26.0
+
+RUN export CUDA_HOME=/usr/local/cuda-10.2
+
+RUN spacy download en_core_web_lg
+
+RUN python -m nltk.downloader punkt
+
+COPY . /app
+WORKDIR /app
+
+RUN cd libs/apex
+RUN git submodule init && git submodule update .
+
+RUN pip install -v --no-cache-dir /app
+RUN cd /app && python setup.py develop
+
+CMD ["python", "/app/scripts/compute_metrics.py" , "-c /app/data/nytimes/name_counters.pkl /app/expt/nytimes/9_transformer_objects/serialization/generations.jsonl"]
