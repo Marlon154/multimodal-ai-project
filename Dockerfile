@@ -1,12 +1,9 @@
-# Use an official CUDA-enabled Python runtime as a parent image
-# FROM nvidia/cuda:11.4.3-devel-ubuntu20.04
 FROM python:3.7.4-slim-buster
+# FROM nvidia/cuda:11.4.3-devel-ubuntu20.04
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV CUDA_HOME=/usr/local/cuda-10.2
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     python3-dev \
@@ -23,7 +20,6 @@ RUN apt-get update && apt-get install -y \
 #    rm ~/miniconda.sh
 #ENV PATH="/opt/conda/bin:${PATH}"
 
-# Create and activate conda environment
 RUN pip install spacy==2.1.9
 RUN pip install allennlp==0.9.0
 RUN pip install scikit-learn==0.24.2
@@ -37,7 +33,7 @@ RUN pip install pymongo==3.10.1
 RUN pip install pycocoevalcap==1.2.0
 
 RUN export SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True
-COPY requirements-tell.txt .
+# COPY requirements-tell.txt .
 #RUN pip install -r requirements-tell.txt
 #RUN conda activate tell
 
@@ -48,7 +44,7 @@ COPY requirements-tell.txt .
 RUN python -m spacy download en_core_web_lg
 RUN pip install nltk pymongo
 RUN python -m nltk.downloader punkt
-# Install the project
+
 WORKDIR /app
 COPY . /app
 RUN python setup.py develop
