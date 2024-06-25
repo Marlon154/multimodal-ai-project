@@ -2,10 +2,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from transformers import BertTokenizer
+from transformers import RobertaTokenizer
 
-from decoder_faces_objects import DynamicConvDecoderConfig, DynamicConvDecoder
+from decoder_faces_objects import (DynamicConvDecoderConfig, DynamicConvDecoder)
 from dataset import NYTimesDataset
+from model import TransformAndTellModel
 
 # Create an instance of the DynamicConvDecoder model
 config = DynamicConvDecoderConfig(
@@ -28,7 +29,7 @@ config = DynamicConvDecoderConfig(
     relu_dropout=0.1,
     input_dropout=0.1,
     decoder_normalize_before=False,
-    decoder_kernel_size_list=[3, 7, 15],
+    decoder_kernel_size_list=[3, 7, 15, 31, 63, 127],
     adaptive_softmax_cutoff=None,
     tie_adaptive_weights=False,
     adaptive_softmax_dropout=0.0,
@@ -47,9 +48,12 @@ model = DynamicConvDecoder(config)
 # Prepare the data
 json_dir = './sample/sample_json'
 image_dir = './sample/sample_images'
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
 train_dataset = NYTimesDataset(json_dir, image_dir, tokenizer)
-train_dataloader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+
+# Create an instance of the TransformAndTellModel
+model = TransformAndTellModel(vocab_size=tokenizer.vocab_size)
 
 # Define the optimizer and loss function
 optimizer = optim.Adam(model.parameters(), lr=1e-4)
@@ -57,36 +61,29 @@ criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
 
 # Training loop
 num_epochs = 10
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
 
 for epoch in range(num_epochs):
     model.train()
     total_loss = 0
 
     for batch in train_dataloader:
-        headline_input_ids = batch['headline_input_ids']
-        headline_attention_mask = batch['headline_attention_mask']
-        article_input_ids = batch['article_input_ids']
-        article_attention_mask = batch['article_attention_mask']
-        images = batch['images']
-        face_embeddings = batch['face_embeddings']
-        object_embeddings = batch['object_embeddings']
+        caption_input_ids = batch['caption_input_ids'].to(device)
+        caption_attention_mask = batch['caption_attention_mask'].to(device)
+        article_input_ids = batch['article_input_ids'].to(device)
+        article_attention_mask = batch['article_attention_mask'].to(device)
+        image = batch['image'].to(device)
+        face_embeddings = batch['face_embeddings'].to(device)
+        object_embeddings = batch['object_embeddings'].to(device)
 
         optimizer.zero_grad()
 
         # Forward pass
-        output = model(prev_target=article_input_ids, contexts={
-            'image': images,
-            'article': article_input_ids,
-            'faces': face_embeddings,
-            'obj': object_embeddings,
-            'image_mask': None,
-            'article_mask': article_attention_mask,
-            'faces_mask': None,
-            'obj_mask': None
-        })
+        output = model(article_input_ids, article_attention_mask, image, face_embeddings, object_embeddings, caption_input_ids)
 
         # Compute loss
-        loss = criterion(output.last_hidden_state.view(-1, config.vocab_size), article_input_ids.view(-1))
+        loss = criterion(output.view(-1, tokenizer.vocab_size), caption_input_ids.view(-1))
 
         # Backward pass and optimization
         loss.backward()
@@ -98,4 +95,4 @@ for epoch in range(num_epochs):
     print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_loss:.4f}")
 
 # Save the trained model
-torch.save(model.state_dict(), 'dynamic_conv_decoder.pth')
+torch.save(model.state_dict(), 'transform_and_tell_model.pth')
