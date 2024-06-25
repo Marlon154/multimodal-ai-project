@@ -75,22 +75,22 @@ def predict(model, image_tensor):
     return outputs
 
 
-def main(image_path):
+def main(image):
     model = load_model()
 
     # Preprocess the image
-    image_tensor = preprocess_image(image_path)
+    image_tensor = preprocess_image(image)
 
     # Run the prediction
     outputs = predict(model, image_tensor)
 
-    # Print the outputs
-    print(outputs)
+    return outputs
 
 
 if __name__ == "__main__":
-    # image_path = get_imgages(
-    #     image_folder="./data/nytimes/sample/sample_images/", sample=1
-    # )[0]
-    load_model()
-    # main(image_path)
+    image = get_imgages(image_folder="./data/nytimes/sample/sample_images/", sample=1)[
+        0
+    ]
+    Image.open(image).show()
+    # load_model()
+    print(main(image).argmax())
