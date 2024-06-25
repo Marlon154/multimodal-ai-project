@@ -1,0 +1,49 @@
+services:
+  train_mongo_db:
+    image: mongo
+    networks:
+      - mongo_net
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: secure_pw
+    volumes:
+      - /home/ml-stud14/mai-data/database:/data/db
+
+  tat-training:
+    networks:
+      - mongo_net
+    depends_on:
+      - train_mongo_db
+    build:
+      context: .
+      dockerfile: Dockerfile3
+    volumes:
+      - /home/ml-stud14/mai-data/train/cache:/app/cache
+      - /home/ml-stud14/mai-data/train/output:/app/output
+      - /home/ml-stud14/mai-data/databases/nytimes-images:/data/nytimes/images_processed
+    command: python tell/training/train.py
+    environment:
+      - MONGO_HOST=train_mongo_db
+      - MONGO_PORT=27017
+      - MONGO_USERNAME=root
+      - MONGO_PASSWORD=secure_pw
+      - WANDB_API_KEY=133b3117705a8687c9548f3787aedab0b3fc5d95
+      - IMAGE_PATH="/data/nytimes/images_processed"
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            device_ids: ['0']
+            capabilities: [gpu]
+
+networks:
+  mongo_net:
+    driver: bridge
+
+volumes:
+  database:
+  cache:
+  output:

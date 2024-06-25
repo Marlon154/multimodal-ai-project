@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  mongo_db:
+    image: mongo
+    networks:
+      - mongo_net
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: secure_pw 
+    volumes:
+      - /home/ml-stud14/mai-data/database:/data/db
+#    healthcheck:
+#      test: echo 'db.runCommand("ping").ok' | mongo mongo_db:27017/test --quiet
+#      interval: 10s
+#      timeout: 10s
+#      retries: 5
+#      start_period: 40s
+
+#  mongo_restore:
+#     image: mongo
+#     depends_on:
+#       - mongo_db
+#     networks:
+#       - mongo_net
+##     command: mongorestore --db nytimes --username root --password secure_pw --authenticationDatabase admin --host mongo_db --port 27017 --drop --archive=/dump/nytimes-2020-04-21
+#     command: mongorestore --db nytimes_sample --username root --password secure_pw --authenticationDatabase admin --host mongo_db --port 27017 --drop --gzip --archive=/dump/nytimes-2020-04-21_sample.gz
+#     volumes:
+#       - /home/ml-stud14/mai-data/:/dump
+  
+#  mongo_express:
+#    image: mongo-express
+#    depends_on:
+#      - mongo_db
+##      mongo_db:
+##        condition: service_healthy
+#    networks:
+#      - mongo_net
+#    ports:
+#      - 8081:8081
+#    environment:
+#      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+#      ME_CONFIG_MONGODB_ADMINPASSWORD: secure_pw
+#      ME_CONFIG_MONGODB_URL: mongodb://root:secure_pw@mongo_db:27017/
+#      ME_CONFIG_BASICAUTH: false
+#
+#  training_container:
+#    image: mai-project-train
+#    depends_on:
+#      - mongo_db
+#    networks:
+#      - mongo_net
+#    volumes:
+#      - /home/ml-stud14/mai-data/train/cache:/app/cache
+#      - /home/ml-stud14/mai-data/train/output:/app/output
+#    environment:
+#      - NVIDIA_VISIBLE_DEVICES=3
+#      - MONGO_HOST=mongo_db
+#      - MONGO_PORT=27017
+#      - MONGO_USERNAME=root
+#      - MONGO_PASSWORD=secure_pw
+#    command: tell train expt/nytimes/9_transformer_objects/config.yaml -f
+#    deploy:
+#          resources:
+#            reservations:
+#              devices:
+#              - driver: nvidia
+#                device_ids: ['3']
+#                capabilities: [gpu]
+
+networks:
+  mongo_net:
+    driver: bridge
+
+volumes:
+  database:
+  cache:
+  output:

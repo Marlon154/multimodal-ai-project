@@ -3,6 +3,7 @@ import os
 import random
 import re
 from typing import Dict
+import multiprocessing
 
 import numpy as np
 import pymongo
@@ -99,7 +100,7 @@ class NYTimesFacesNERMatchedReader(DatasetReader):
                       'image_positions', 'headline',
                       'web_url', 'n_images_with_faces']
 
-        for article_id in ids:
+        for article_id in tqdm(ids, desc="Processing articles", unit="article"):
             article = self.db.articles.find_one(
                 {'_id': {'$eq': article_id}}, projection=projection)
             sections = article['parsed_section']

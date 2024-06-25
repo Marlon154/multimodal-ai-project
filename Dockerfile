@@ -44,4 +44,4 @@ WORKDIR /app
 COPY . /app
 RUN python setup.py develop
 
-CMD tell train expt/nytimes/9_transformer_objects/config.yaml -f
+CMD python tell/training/train.py

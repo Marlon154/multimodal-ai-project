@@ -2,40 +2,79 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments, RobertaTokenizer
 from datasets import Dataset
+import wandb
+from torchvision.transforms import Compose, Normalize, ToTensor
+from tqdm import tqdm
 
 from tell.models import TransformerFacesObjectModel
 from tell.data.dataset_readers.nytimes_faces_ner_matched import NYTimesFacesNERMatchedReader
 
 
-def create_dataset(data_path, tokenizer, image_processor):
+def create_dataset(split, tokenizer, image_processor):
+    # Initialize the NYTimesFacesNERMatchedReader
+    mongo_host = os.environ.get('MONGO_HOST', 'localhost')
+    mongo_port = int(os.environ.get('MONGO_PORT', 27017))
+    image_path = str(os.environ.get('IMAGE_PATH', "./databases/nytimes"))
     reader = NYTimesFacesNERMatchedReader(
         tokenizer=tokenizer,
-        token_indexers={'roberta': tokenizer},
-        image_dir='data/nytimes/images_processed',
-        use_caption_names=False,
-        use_objects=True
+        token_indexers={"tokens": tokenizer},
+        image_dir=image_path,
+        mongo_host=mongo_host,
+        mongo_port=mongo_port,
+        use_caption_names=True,
+        use_objects=True,
+        n_faces=None,
+        lazy=True
     )
 
-    instances = list(reader.read(data_path))
+    # Create a list to store the processed examples
+    examples = []
 
-    def process_instance(instance):
-        return {
-            'context': instance.fields['context'].tokens,
-            'image': image_processor(instance.fields['image'].image),
-            'caption': instance.fields['caption'].tokens,
-            'face_embeds': instance.fields['face_embeds'].array,
-            'obj_embeds': instance.fields['obj_embeds'].array,
-            'target': instance.fields['caption'].tokens[:, 1:]  # Shift right for teacher forcing
+    # Iterate through the dataset
+    for instance in tqdm(reader.read(split), desc=f"Processing {split} dataset"):
+        # Extract relevant information from the instance
+        context = instance.fields["context"].tokens
+        names = [name.tokens for name in instance.fields["names"].field_list]
+        image = instance.fields["image"].image
+        caption = instance.fields["caption"].tokens
+        face_embeds = instance.fields["face_embeds"].array
+        obj_embeds = instance.fields["obj_embeds"].array if "obj_embeds" in instance.fields else None
+        metadata = instance.fields["metadata"].metadata
+
+        # Process the image
+        processed_image = image_processor(image)
+
+        # Create a dictionary for the example
+        example = {
+            "context": tokenizer.convert_tokens_to_ids(context),
+            "names": [tokenizer.convert_tokens_to_ids(name) for name in names],
+            "image": processed_image,
+            "caption": tokenizer.convert_tokens_to_ids(caption),
+            "face_embeds": face_embeds,
+            "obj_embeds": obj_embeds,
+            "metadata": metadata
         }
 
-    return Dataset.from_list([process_instance(instance) for instance in instances])
+        examples.append(example)
 
+    # Create a Hugging Face Dataset
+    dataset = Dataset.from_dict({
+        "context": [ex["context"] for ex in examples],
+        "names": [ex["names"] for ex in examples],
+        "image": [ex["image"] for ex in examples],
+        "caption": [ex["caption"] for ex in examples],
+        "face_embeds": [ex["face_embeds"] for ex in examples],
+        "obj_embeds": [ex["obj_embeds"] for ex in examples],
+        "metadata": [ex["metadata"] for ex in examples]
+    })
+
+    return dataset
 
 def main():
-    from transformers import RobertaTokenizer
-    from torchvision.transforms import Compose, Normalize, ToTensor
+    # Initialize wandb
+    wandb.init(project="MAI-Project")
 
     # Load tokenizer and image processor
     tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
@@ -63,6 +102,9 @@ def main():
         'vocab_size': 50265,
     }
 
+    # Log model config to wandb
+    wandb.config.update(model_config)
+
     # Initialize model
     model = TransformerFacesObjectModel(model_config)
 
@@ -83,6 +125,7 @@ def main():
         metric_for_best_model="loss",
         greater_is_better=False,
         fp16=True,
+        report_to="wandb",
     )
 
     # Initialize Trainer
@@ -96,6 +139,8 @@ def main():
     # Start training
     trainer.train()
 
+    # Close wandb run
+    wandb.finish()
 
 if __name__ == "__main__":
     main()
