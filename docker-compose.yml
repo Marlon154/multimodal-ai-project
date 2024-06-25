@@ -36,21 +36,21 @@ services:
       ME_CONFIG_MONGODB_URL: mongodb://root:secure_pw@mongo_db:27017/
       ME_CONFIG_BASICAUTH: false
 
-  tnt-training:
-    image: tnt-training 
-    depends_on:
-      - mongo_db
-    networks:
-      - mongo_net
-    volumes:
-      - ./data:/app/data
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+  # tnt-training:
+  #   image: tnt-training
+  #   depends_on:
+  #     - mongo_db
+  #   networks:
+  #     - mongo_net
+  #   volumes:
+  #     - ./data:/app/data
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
 networks:
   mongo_net:
     driver: bridge
