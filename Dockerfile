@@ -1,56 +1,55 @@
-# FROM python:3.7.4-slim-buster
-FROM nvidia/cuda:11.4.3-devel-ubuntu20.04
+# Use an official CUDA-enabled Python runtime as a parent image
+# FROM nvidia/cuda:12.4.0-devel-ubuntu22.04
+FROM nvidia/cuda:11.2.2-devel-ubuntu20.04
 
-ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
 
+# Install dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    python3 \
-    python3-pip \
-    git \
     wget \
-    libfreetype6-dev \
-    libpng-dev \
-    zlib1g-dev 
+    bzip2 \
+    ca-certificates \
+    libglib2.0-0 \
+    libxext6 \
+    libsm6 \
+    libxrender1 \
+    git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# install python 3.7.4
+# install conda (ubuntus package manager is awesome - this would've taken me 10 seconds on arch linux)
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh \
+    && /bin/bash /tmp/miniconda.sh -b -p /opt/conda \
+    && rm /tmp/miniconda.sh
+ENV PATH=/opt/conda/bin:$PATH
+RUN conda update -n base -c defaults conda
 
+# init conda for bash
+RUN conda init bash
 
-RUN export SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True
+# install requirements | setup environment
+WORKDIR app
+COPY environment.yml .
+RUN conda env create -f environment.yml
+RUN echo "conda activate tell" >> ~/.bashrc
 
-RUN pip install packaging
-RUN pip install torch==1.5.1
+# CUDA home
+ENV CUDA_HOME=/usr/local/cuda-11.2
 
-RUN git clone https://github.com/NVIDIA/apex
-WORKDIR ./apex
-RUN pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+# install apex
+# WORKDIR /home/docker
+# RUN git clone https://github.com/NVIDIA/apex.git
+# WORKDIR /home/docker/apex
+# RUN git checkout 44532b3
+# RUN /bin/bash -c 'source /opt/conda/bin/activate && conda activate tell && pip install -v --no-cache-dir --global-option="--pyprof" --global-option="--cpp_ext" --global-option="--cuda_ext" ./'
+# WORKDIR /home/docker/app
 
-RUN pip install spacy==2.1.9
-RUN pip install allennlp==0.9.0
-RUN pip install scikit-learn==0.24.2
-RUN pip install torchvision==0.6.1
-RUN pip install transformers==2.5.1
-RUN pip install overrides==3.1.0
-RUN pip install tensorboard==2.5.0
-RUN pip install nltk==3.4.5
-RUN pip install pymongo==3.10.1
-RUN pip install pycocoevalcap==1.2.0
+# install tell
+COPY . .
+RUN /bin/bash -c 'source /opt/conda/bin/activate && conda activate tell && python setup.py develop'
 
-RUN python3 -m spacy download en_core_web_lg
-RUN pip install nltk pymongo
-RUN python3 -m nltk.downloader punkt
+# download python package stuff
+RUN /bin/bash -c 'source /opt/conda/bin/activate && conda activate tell && python -m spacy download en_core_web_lg && python -m nltk.downloader punkt'
 
-RUN pip install ptvsd
-RUN pip install pudb
-RUN pip install docopt==0.6.2
-RUN pip install schema==0.7.7
-RUN pip install textstat==0.7.3
-
-
-WORKDIR /app
-COPY . /app
-RUN python3 setup.py develop
-
-RUN ln -s /usr/bin/python3 /usr/bin/python
-
-CMD tell train expt/nytimes/9_transformer_objects/config.yaml -f
+# train model
+CMD /bin/bash -c 'source /opt/conda/bin/activate && conda activate tell && CUDA_VISIBLE_DEVICES=0 tell train expt/nytimes/9_transformer_objects/config.yaml -f'

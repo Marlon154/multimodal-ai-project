@@ -121,7 +121,7 @@ validation_iterator:
   biggest_batch_first: false
 trainer:
   type: callback_apex
-  apex_opt_level: null 
+ #  apex_opt_level: O2
   keep_batchnorm_fp32: true
   optimizer:
     type: bert_adam

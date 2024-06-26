@@ -44,6 +44,8 @@ services:
       - mongo_net
     volumes:
       - ./data:/app/data
+      - cache_torch:/root/.cache/torch
+      - cache:/app/cache
     deploy:
       resources:
         reservations:
@@ -51,9 +53,12 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
 networks:
   mongo_net:
     driver: bridge
 
 volumes:
   database:
+  cache:
+  cache_torch:

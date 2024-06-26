@@ -48,7 +48,7 @@ class NYTimesGloveReader(DatasetReader):
         super().__init__(lazy)
         self._tokenizer = tokenizer
         self._token_indexers = token_indexers
-        self.client = MongoClient("mongodb://root:secure_pw@localhost:27017/")
+        self.client = MongoClient("mongodb://root:secure_pw@mongo_db:27017/")
         # self.client = MongoClient(host=mongo_host, port=mongo_port)
         self.db = self.client.nytimes
         self.image_dir = image_dir
