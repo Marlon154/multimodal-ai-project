@@ -111,12 +111,8 @@ def get_embedding(images: Image, layer_from_end=2, device="cuda") -> torch.tenso
 if __name__ == "__main__":
     img_path_gen = imgage_path_generator(image_folder="./data/nytimes/sample/sample_images/")
     save_embedding = embedding_saver_factory()
-    count = 0
     for img_hash, img_path in img_path_gen:
         image = Image.open(img_path)
         embedding = get_embedding(image, 2)
         embedding = embedding.cpu()
         save_embedding(img_hash, embedding)
-        count += 1
-        if count >= 4:
-            break
