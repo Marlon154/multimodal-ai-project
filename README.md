@@ -6,5 +6,5 @@ Project for Multimodal AI class at TUD
 
 
 # Authors
-- 
+- Jonas Milkovits 
 

@@ -1,6 +1,2 @@
 data/
-demo/
-docs/
-figures/
-mongo_db/
-.git
+transform_and_tell/
