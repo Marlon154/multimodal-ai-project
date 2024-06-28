@@ -33,6 +33,7 @@ packaging==24.1
 pandas==2.2.2
 pyarrow==16.1.0
 pyarrow-hotfix==0.6
+pymongo==4.8.0
 python-dateutil==2.9.0.post0
 pytz==2024.1
 PyYAML==6.0.1
@@ -43,10 +44,12 @@ six==1.16.0
 sympy==1.12.1
 tokenizers==0.19.1
 torch==2.3.1
+torchvision==0.18.1
 tqdm==4.66.4
 transformers==4.42.2
 typing_extensions==4.12.2
 tzdata==2024.1
 urllib3==2.2.2
+wandb==0.17.3
 xxhash==3.4.1
 yarl==1.9.4
