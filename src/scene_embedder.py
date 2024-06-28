@@ -39,11 +39,10 @@ def connect():
     return client
 
 
-def get_imgages(
-    db="nytimes",
+def imgage_path_generator(
     image_folder="./../input_data/uncompressed/images_processed/",
     image_extension=".jpg",
-    sample=None,
+    sample=0,
 ):
     # print("get_images...")
     client = connect()
@@ -52,21 +51,30 @@ def get_imgages(
     db = client["nytimes_sample"]
     image_table = db["images"]
 
-    # print("Finding images...")
-    ids = []
-    # if sample
     documents = image_table.find().limit(sample)
     for doc in documents:
-        ids.append(os.path.join(image_folder, doc["_id"] + image_extension))
-
-    # print(f"{ids=}")
-    return ids
+        yield (doc["_id"], os.path.join(image_folder, doc["_id"] + image_extension))
 
 
-def load_model():
+def embedding_saver_factory():
+    db_name = "place_embeddings"
+    client = connect()
+    db = client[db_name]
+    embedding_table = db["embeddings"]
+
+    def store_embedding(key, embedding: torch.Tensor):
+        embedding = embedding.numpy().tolist()
+        record = {key: embedding}
+        embedding_table.insert_one(record)
+
+    return store_embedding
+
+
+def load_model(device="cuda"):
     model = resnet152Places365.resnet152_places365
     model.load_state_dict(torch.load("./src/resnet152Places365/resnet152Places365.pth"))
     model.eval()
+    model.to(device)
     return model
 
 
@@ -88,21 +96,27 @@ def preprocess_image(image: Image):
     return image
 
 
-def get_embedding(images: Image, layer_from_end=5) -> torch.tensor:
+def get_embedding(images: Image, layer_from_end=2, device="cuda") -> torch.tensor:
     model = load_model()
     activation_extractor = ActivationExtractor(model, layer_from_end=layer_from_end)
 
     # Preprocess the image
-    image_tensor = preprocess_image(images)
+    image_tensor = preprocess_image(images).to(device)
 
-    embeddings = activation_extractor.get_activation(image_tensor)
+    embeddings = activation_extractor.get_activation(image_tensor).to(device)
 
     return embeddings
 
 
 if __name__ == "__main__":
-    image_path = get_imgages(image_folder="./data/nytimes/sample/sample_images/", sample=1)[0]
-    image = Image.open(image_path)
-    for i in range(1, 5):
-        embedding = get_embedding(image, i)
-        print(f"layer:{i}  {embedding.size()=}")
+    img_path_gen = imgage_path_generator(image_folder="./data/nytimes/sample/sample_images/")
+    save_embedding = embedding_saver_factory()
+    count = 0
+    for img_hash, img_path in img_path_gen:
+        image = Image.open(img_path)
+        embedding = get_embedding(image, 2)
+        embedding = embedding.cpu()
+        save_embedding(img_hash, embedding)
+        count += 1
+        if count >= 4:
+            break
