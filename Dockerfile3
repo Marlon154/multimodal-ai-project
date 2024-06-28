@@ -1,0 +1,31 @@
+# Use an official CUDA-enabled Python runtime as a parent image
+# FROM nvidia/cuda:11.4.3-devel-ubuntu20.04
+FROM python:3.7.12-slim-buster
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+#ENV CUDA_HOME=/usr/local/cuda-10.2
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3-dev \
+    python3-pip \
+    git \
+    wget \
+    libfreetype6-dev \
+    libpng-dev \
+    zlib1g-dev
+
+COPY requirements-tell2.txt requirements.txt
+RUN pip install -r requirements.txt
+
+RUN python -m spacy download en_core_web_lg
+RUN pip install nltk pymongo
+RUN python -m nltk.downloader punkt
+# Install the project
+WORKDIR /app
+COPY . /app
+RUN python setup.py develop
+
+CMD python tell/train/train.py
