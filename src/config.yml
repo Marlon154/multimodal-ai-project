@@ -1,0 +1,49 @@
+wandb:
+  project: "MAI-Project"
+
+dataset:
+  mongo_host: 'mongo_db'
+  mongo_port: 27017
+  image_dir: "/data/images"
+  seed: 55486448734583
+
+decoder:
+  layers: 4
+  hidden_size: 1024
+  attention_dim: 1024
+  ffn_embed_dim: 4096
+  attention_heads: 16
+  dropout: 0.1
+  conv_dim: 1024
+  glu: True
+  conv_type: 'dynamic'
+  weight_softmax: True
+  weight_dropout: 0.1
+  relu_dropout: 0.1
+  input_dropout: 0.1
+  normalize_before: True
+  attention_dropout: 0.1
+  kernel_size_list: [3, 7, 15, 31]
+  adaptive_softmax_cutoff: null
+  tie_adaptive_weights: False
+  adaptive_softmax_dropout: 0
+  tie_adaptive_proj: False
+  adaptive_softmax_factor: 0
+  section_attn: False
+  swap: False
+
+encoder:
+  text_encoder: 'roberta-base'
+
+training:
+  padding_value: 1
+  vocab_size: 50265
+  max_target_positions: 512
+  weight_decay: 0.0001
+  num_train_epochs: 10
+  per_device_train_batch_size: 16
+  per_device_eval_batch_size: 16
+  output_dir: 'output'
+  logging_dir: 'logs'
+  loss_fn: 'adaptive_loss'
+  device: 'cuda'

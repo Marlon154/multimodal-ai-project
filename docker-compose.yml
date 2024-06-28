@@ -21,6 +21,9 @@ services:
       - ./data:/app/data
       - cache_torch:/root/.cache/torch
       - cache:/app/cache
+      - /home/ml-stud14/mai-data/databases/nytimes-images/images_processed/:/data/images
+    environment:
+      - WANDB_API_KEY=${WANDB_API_KEY}
     deploy:
       resources:
         reservations:

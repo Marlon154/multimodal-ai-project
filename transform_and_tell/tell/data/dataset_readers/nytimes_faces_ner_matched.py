@@ -81,7 +81,6 @@ class NYTimesFacesNERMatchedReader(DatasetReader):
     @overrides
     def _read(self, split: str):
         # split can be either train, valid, or test
-        # validation and test sets contain 10K examples each
         if split not in ['train', 'valid', 'test']:
             raise ValueError(f'Unknown split: {split}')
 

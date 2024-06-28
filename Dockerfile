@@ -12,4 +12,4 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # replace with training command
-CMD bash
+CMD python src/train.py
