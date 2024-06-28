@@ -11,16 +11,16 @@ services:
     volumes:
       - database:/data/db
 
-  # mongo_restore:
-  #   image: mongo
-  #   depends_on:
-  #     - mongo_db
-  #   networks:
-  #     - mongo_net
-  #   # command: mongorestore --db nytimes --username root --password secure_pw --authenticationDatabase admin --host mongo_db --port 27017 --drop --archive=/dump/nytimes-2020-04-21
-  #   command: mongorestore --db nytimes_sample --username root --password secure_pw --authenticationDatabase admin --host mongo_db --port 27017 --drop --gzip --archive=/dump/nytimes-2020-04-21_sample.gz
-  #   volumes:
-  #     - ./mongo_db/dump:/dump
+  mongo_restore:
+    image: mongo
+    depends_on:
+      - mongo_db
+    networks:
+      - mongo_net
+    # command: mongorestore --db nytimes --username root --password secure_pw --authenticationDatabase admin --host mongo_db --port 27017 --drop --archive=/dump/nytimes-2020-04-21
+    command: mongorestore --db nytimes_sample --username root --password secure_pw --authenticationDatabase admin --host mongo_db --port 27017 --drop --gzip --archive=/dump/nytimes-2020-04-21_sample.gz
+    volumes:
+      - ./mongo_db/dump:/dump
   
   mongo_express:
     image: mongo-express
@@ -36,8 +36,8 @@ services:
       ME_CONFIG_MONGODB_URL: mongodb://root:secure_pw@mongo_db:27017/
       ME_CONFIG_BASICAUTH: false
 
-  tnt-training:
-    image: tnt-training 
+  training:
+    image: training 
     depends_on:
       - mongo_db
     networks:
