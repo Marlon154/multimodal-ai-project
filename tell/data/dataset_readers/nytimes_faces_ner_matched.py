@@ -100,7 +100,11 @@ class NYTimesFacesNERMatchedReader(DatasetReader):
                       'image_positions', 'headline',
                       'web_url', 'n_images_with_faces']
 
+        counter = 0
         for article_id in tqdm(ids, desc="Processing articles", unit="article"):
+            counter += 1
+            if counter % 1000 == 0:
+                logger.info(f'Processing article {counter} of {len(ids)}')
             article = self.db.articles.find_one(
                 {'_id': {'$eq': article_id}}, projection=projection)
             sections = article['parsed_section']
