@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.models.bert.modeling_bert import BertEmbeddings
-from tell.modules import (AdaptiveSoftmax, DynamicConv1dTBC, GehringLinear,
+from modules import (AdaptiveSoftmax, DynamicConv1dTBC, GehringLinear,
                           LightweightConv1dTBC, MultiHeadAttention)
 
 

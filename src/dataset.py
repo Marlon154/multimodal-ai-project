@@ -1,13 +1,19 @@
 import os
-import json
 import numpy as np
+import torch
 from PIL import Image
 from torch.utils.data import Dataset
+from tqdm import tqdm
 from transformers import BertTokenizer, RobertaModel
 from torchvision.transforms import Compose, Normalize, ToTensor
+from pymongo import MongoClient
+import logging
 
 
-class NYTimesFacesNERMatchedReader(Dataset):
+logger = logging.getLogger(__name__)
+
+
+class TaTDatasetReader(Dataset):
     def __init__(
             self,
             image_dir: str,
@@ -16,9 +22,14 @@ class NYTimesFacesNERMatchedReader(Dataset):
             use_caption_names: bool = True,
             use_objects: bool = False,
             n_faces: int = None,
-            max_length = 512
+            roberta_model: str = 'roberta-base',
+            max_length: int = 512,
+            seed: int = 464896,
+            device: str = 'cuda',
+            dtype: torch.dtype = torch.float32,
+            # modalities: list = ['scene']
     ):
-        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        self.tokenizer = BertTokenizer.from_pretrained(roberta_model)
         self.client = MongoClient(f"mongodb://root:secure_pw@{mongo_host}:{mongo_port}/")
         self.db = self.client.nytimes
         self.image_dir = image_dir
@@ -27,10 +38,11 @@ class NYTimesFacesNERMatchedReader(Dataset):
         self.use_objects = use_objects
         self.n_faces = n_faces
         self.max_length = max_length
-        random.seed(1234)
-        self.rs = np.random.RandomState(1234)
+        self.rs = np.random.RandomState(seed)
+        self.device = device
+        self.dtype = dtype
 
-        self.roberta = RobertaModel.from_pretrained('roberta-base')
+        self.roberta = RobertaModel.from_pretrained(roberta_model)
 
     def _read(self, split: str):
         """
@@ -106,11 +118,18 @@ class NYTimesFacesNERMatchedReader(Dataset):
                         break
 
                 image_path = os.path.join(self.image_dir, f"{sections[pos]['hash']}.jpg")
+                # Get Image
                 try:
                     image = Image.open(image_path)
                 except (FileNotFoundError, OSError):
+                    logger.error(f"Could not open image at {image_path}, continue training without it")
                     continue
 
+                # Scene Embedding for each Image
+                caption_id = sections[pos]['hash']
+                scene_embedding = self.db.scenes.find_one({'id': caption_id, }, projection=['embedding'])
+
+                # Facenet Details
                 if 'facenet_details' not in sections[pos] or n_persons == 0:
                     face_embeds = np.array([[]])
                 else:
@@ -121,6 +140,7 @@ class NYTimesFacesNERMatchedReader(Dataset):
                 paragraphs = paragraphs + before + after
                 named_entities = sorted(named_entities)
 
+                # Object Features
                 obj_feats = None
                 if self.use_objects:
                     obj = self.db.objects.find_one({'_id': sections[pos]['hash']})
@@ -133,29 +153,57 @@ class NYTimesFacesNERMatchedReader(Dataset):
                     else:
                         obj_feats = np.array([[]])
 
-                yield self.article_to_instance(paragraphs, named_entities, image, caption, image_path, article['web_url'], pos, face_embeds, obj_feats)
+                yield self.article_to_instance(
+                    paragraphs, named_entities, image, caption, image_path, article['web_url'], pos, face_embeds, obj_feats)
 
-    def article_to_instance(self, paragraphs, named_entities, image, caption, image_path, web_url, pos, face_embeds, obj_feats):
+    def article_to_instance(
+            self,
+            paragraphs,
+            named_entities,
+            image,
+            caption,
+            image_path,
+            web_url,
+            pos,
+            face_embeds,
+            obj_feats
+    ):
         context = '\n'.join(paragraphs).strip()
 
-        context_tokens = self.tokenizer.encode_plus(context, add_special_tokens=True, max_length=self.max_length, padding='max_length', truncation=True, return_tensors='pt')
-        caption_tokens = self.tokenizer.encode_plus(caption, add_special_tokens=True, max_length=self.max_length, padding='max_length', truncation=True, return_tensors='pt')
-        name_token_list = [self.tokenizer.encode_plus(n, add_special_tokens=True, max_length=self.max_length, padding='max_length', truncation=True, return_tensors='pt') for n in named_entities]
+        # Tokenize the context
+        context_tokens = self.tokenizer(context, add_special_tokens=True, max_length=self.max_length,
+                                                    padding='max_length', truncation=True, return_tensors='pt')
+
+        # Get the embeddings from the RoBERTa model
+        with torch.no_grad():
+            context_embeddings = self.roberta(context_tokens['input_ids'], attention_mask=context_tokens['attention_mask'])[0]
+
+        caption_tokens = torch.tensor(
+            self.tokenizer(caption, add_special_tokens=True, max_length=self.max_length,
+                           padding='max_length', truncation=True, return_tensors='pt'),
+            device=self.device,
+            dtype=self.dtype
+        )
+        name_token_list = torch.tensor([
+            self.tokenizer(n, add_special_tokens=True, max_length=self.max_length, padding='max_length',
+                                       truncation=True, return_tensors='pt') for n in named_entities],
+            device=self.device,
+            dtype=self.dtype
+        )
 
         fields = {
-            'context': context_tokens,
+            'context': torch.tensor(context_embeddings, dtype=self.dtype, device=self.device),
             'names': name_token_list,
-            'image': self.preprocess(image),
+            'image': image,
             'caption': caption_tokens,
-            'face_embeds': torch.tensor(face_embeds, dtype=torch.float),
+            'face_embeds': torch.tensor(face_embeds, dtype=self.dtype, device=self.device),
+            'obj_embeds': torch.tensor(obj_feats, dtype=self.dtype, device=self.device) if obj_feats is not None else None,
+            'named_entities': torch.tensor(named_entities, dtype=self.dtype, device=self.device),
+            'image_pos': torch.tensor(pos, dtype=torch.int, device=self.device),
         }
 
         if obj_feats is not None:
             fields['obj_embeds'] = torch.tensor(obj_feats, dtype=torch.float)
-
-        metadata = {'context': context, 'caption': caption, 'names': named_entities, 'web_url': web_url, 'image_path': image_path, 'image_pos': pos}
-        fields['metadata'] = metadata
-
         return fields
 
     def _get_named_entities(self, section):
@@ -183,4 +231,4 @@ class NYTimesFacesNERMatchedReader(Dataset):
         return names
 
     def to_token_ids(self, sentence):
-        return self.tokenizer.encode(sentence, add_special_tokens=True)
+        return self.tokenizer(sentence, add_special_tokens=True)
