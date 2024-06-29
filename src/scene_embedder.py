@@ -1,5 +1,6 @@
 import torch
 import torchvision.transforms as transforms
+from tqdm import tqdm
 from transformers import AutoFeatureExtractor, ResNetForImageClassification
 from PIL import Image
 from pymongo import MongoClient
@@ -35,20 +36,17 @@ class ActivationExtractor:
 
 
 def connect():
-    client = MongoClient("mongodb://root:secure_pw@localhost:27017/")
+    client = MongoClient("mongodb://root:secure_pw@mongo_db:27017/")
     return client
 
 
 def imgage_path_generator(
-    image_folder="./../input_data/uncompressed/images_processed/",
+    image_folder="/data/images/",
     image_extension=".jpg",
     sample=0,
 ):
-    # print("get_images...")
     client = connect()
-
-    # print("Getting correct collection...")
-    db = client["nytimes_sample"]
+    db = client["nytimes"]
     image_table = db["images"]
 
     documents = image_table.find().limit(sample)
@@ -57,10 +55,10 @@ def imgage_path_generator(
 
 
 def embedding_saver_factory():
-    db_name = "place_embeddings"
+    db_name = "nytimes"
     client = connect()
     db = client[db_name]
-    embedding_table = db["embeddings"]
+    embedding_table = db["place_embeddings"]
 
     def store_embedding(key, embedding: torch.Tensor):
         embedding = embedding.numpy().tolist()
@@ -109,10 +107,16 @@ def get_embedding(images: Image, layer_from_end=2, device="cuda") -> torch.tenso
 
 
 if __name__ == "__main__":
-    img_path_gen = imgage_path_generator(image_folder="./data/nytimes/sample/sample_images/")
+    print("Starting the embedding extraction process")
+    img_path_gen = imgage_path_generator(image_folder="/data/images/")
     save_embedding = embedding_saver_factory()
-    for img_hash, img_path in img_path_gen:
-        image = Image.open(img_path)
-        embedding = get_embedding(image, 2)
-        embedding = embedding.cpu()
-        save_embedding(img_hash, embedding)
+    print("Connected to the database")
+    for img_hash, img_path in tqdm(img_path_gen, desc="Extracting Embeddings", total=800_000):
+        try:
+            image = Image.open(img_path)
+            embedding = get_embedding(image, 2)
+            embedding = embedding.cpu()
+            save_embedding(img_hash, embedding)
+        except Exception as e:
+            print(f"Failed to extract embedding for {img_hash} with error {e}")
+            continue
