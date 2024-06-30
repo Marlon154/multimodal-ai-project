@@ -111,12 +111,16 @@ if __name__ == "__main__":
     img_path_gen = imgage_path_generator(image_folder="/data/images/")
     save_embedding = embedding_saver_factory()
     print("Connected to the database")
-    for img_hash, img_path in tqdm(img_path_gen, desc="Extracting Embeddings", total=800_000):
+    counter = 0
+    for img_hash, img_path in tqdm(img_path_gen, desc="Extracting Embeddings", total=764471):
         try:
             image = Image.open(img_path)
             embedding = get_embedding(image, 2)
             embedding = embedding.cpu()
             save_embedding(img_hash, embedding)
+            counter += 1
+            if counter % 5000 == 0:
+                print(f"Extracted embeddings for {counter} images")
         except Exception as e:
             print(f"Failed to extract embedding for {img_hash} with error {e}")
             continue
