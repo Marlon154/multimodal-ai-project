@@ -1,11 +1,10 @@
 import torch
 import torchvision.transforms as transforms
 from tqdm import tqdm
-from transformers import AutoFeatureExtractor, ResNetForImageClassification
 from PIL import Image
 from pymongo import MongoClient
-from PIL import Image
 import os
+from torch.utils.data import Dataset, DataLoader
 
 # DO NOT TOUCH
 from resnet152Places365 import resnet152Places365
@@ -40,18 +39,24 @@ def connect():
     return client
 
 
-def imgage_path_generator(
-    image_folder="/data/images/",
-    image_extension=".jpg",
-    sample=0,
-):
-    client = connect()
-    db = client["nytimes"]
-    image_table = db["images"]
+class ImageDataset(Dataset):
+    def __init__(self, image_folder="/data/images/", image_extension=".jpg", sample=0):
+        self.image_folder = image_folder
+        self.image_extension = image_extension
+        self.client = connect()
+        self.db = self.client["nytimes"]
+        self.image_table = self.db["images"]
+        self.documents = list(self.image_table.find().limit(sample))
 
-    documents = image_table.find().limit(sample)
-    for doc in documents:
-        yield (doc["_id"], os.path.join(image_folder, doc["_id"] + image_extension))
+    def __len__(self):
+        return len(self.documents)
+
+    def __getitem__(self, idx):
+        doc = self.documents[idx]
+        img_path = os.path.join(self.image_folder, doc["_id"] + self.image_extension)
+        image = Image.open(img_path).convert('RGB')
+        image = preprocess_image(image)
+        return doc["_id"], image
 
 
 def embedding_saver_factory():
@@ -60,12 +65,12 @@ def embedding_saver_factory():
     db = client[db_name]
     embedding_table = db["place_embeddings"]
 
-    def store_embedding(key, embedding: torch.Tensor):
-        embedding = embedding.numpy().tolist()
-        record = {key: embedding}
-        embedding_table.insert_one(record)
+    def store_embeddings(keys, embeddings: torch.Tensor):
+        embeddings = embeddings.cpu().numpy().tolist()
+        records = [{key: embedding} for key, embedding in zip(keys, embeddings)]
+        embedding_table.insert_many(records)
 
-    return store_embedding
+    return store_embeddings
 
 
 def load_model(device="cuda"):
@@ -77,50 +82,46 @@ def load_model(device="cuda"):
 
 
 def preprocess_image(image: Image):
-    # transform for image
-    preprocess = transforms.Compose(
-        [
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-
-    # Apply the transformation
-    image = preprocess(image)
-    image = image.unsqueeze(0)  # Add batch dimension
-
-    return image
+    preprocess = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    return preprocess(image)
 
 
-def get_embedding(images: Image, layer_from_end=2, device="cuda") -> torch.tensor:
+def get_embeddings(images: torch.Tensor, layer_from_end=2, device="cuda") -> torch.Tensor:
     model = load_model()
     activation_extractor = ActivationExtractor(model, layer_from_end=layer_from_end)
-
-    # Preprocess the image
-    image_tensor = preprocess_image(images).to(device)
-
-    embeddings = activation_extractor.get_activation(image_tensor).to(device)
-
+    images = images.to(device)
+    embeddings = activation_extractor.get_activation(images).to(device)
     return embeddings
 
 
 if __name__ == "__main__":
     print("Starting the embedding extraction process")
-    img_path_gen = imgage_path_generator(image_folder="/data/images/")
-    save_embedding = embedding_saver_factory()
+
+    # Hyperparameters
+    batch_size = 16
+    num_workers = 4
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Create dataset and dataloader
+    dataset = ImageDataset(image_folder="/data/images/", sample=764471)
+    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
+
+    save_embeddings = embedding_saver_factory()
     print("Connected to the database")
+
     counter = 0
-    for img_hash, img_path in tqdm(img_path_gen, desc="Extracting Embeddings", total=764471):
+    for img_hashes, images in tqdm(dataloader, desc="Extracting Embeddings"):
         try:
-            image = Image.open(img_path)
-            embedding = get_embedding(image, 2)
-            embedding = embedding.cpu()
-            save_embedding(img_hash, embedding)
-            counter += 1
+            embeddings = get_embeddings(images, 2, device)
+            save_embeddings(img_hashes, embeddings)
+            counter += len(img_hashes)
             if counter % 5000 == 0:
                 print(f"Extracted embeddings for {counter} images")
         except Exception as e:
-            print(f"Failed to extract embedding for {img_hash} with error {e}")
+            print(f"Failed to extract embeddings for batch with error {e}")
             continue
