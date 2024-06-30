@@ -29,7 +29,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile-scene-embedder
-    shm_size: '2gb'
+    shm_size: '40gb'
     depends_on:
       - mongo_db
     networks:
@@ -43,8 +43,6 @@ services:
             - driver: nvidia
               capabilities: [gpu]
               device_ids: ['1']
-        limits:
-          memory: 8G
 
 networks:
   mongo_net:

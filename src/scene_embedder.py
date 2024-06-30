@@ -1,10 +1,11 @@
+import os
+
 import torch
 import torchvision.transforms as transforms
-from tqdm import tqdm
 from PIL import Image
-from pymongo import MongoClient
-import os
-from torch.utils.data import Dataset, DataLoader
+from pymongo import MongoClient, collection
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 # DO NOT TOUCH
 from resnet152Places365 import resnet152Places365
@@ -40,37 +41,28 @@ def connect():
 
 
 class ImageDataset(Dataset):
-    def __init__(self, image_folder="/data/images/", image_extension=".jpg", sample=0):
+    def __init__(self, client, image_folder="/app/data/nytimes/images_processed/", image_extension=".jpg", sample=0):
         self.image_folder = image_folder
         self.image_extension = image_extension
-        self.client = connect()
-        self.db = self.client["nytimes"]
+        self.db = client["nytimes"]
         self.image_table = self.db["images"]
-        self.documents = list(self.image_table.find().limit(sample))
+        docs = list(self.image_table.find().limit(sample))
+        self.document_ids = []
+        for doc in docs:
+            img_path = os.path.join(self.image_folder, doc["_id"] + self.image_extension)
+            if os.path.exists(img_path):
+                self.document_ids.append(doc["_id"])
+        print(f"checked images: {len(self.document_ids)}")
 
     def __len__(self):
-        return len(self.documents)
+        return len(self.document_ids)
 
     def __getitem__(self, idx):
-        doc = self.documents[idx]
-        img_path = os.path.join(self.image_folder, doc["_id"] + self.image_extension)
-        image = Image.open(img_path).convert('RGB')
+        id = self.document_ids[idx]
+        img_path = os.path.join(self.image_folder, id + self.image_extension)
+        image = Image.open(img_path).convert("RGB")
         image = preprocess_image(image)
-        return doc["_id"], image
-
-
-def embedding_saver_factory():
-    db_name = "nytimes"
-    client = connect()
-    db = client[db_name]
-    embedding_table = db["place_embeddings"]
-
-    def store_embeddings(keys, embeddings: torch.Tensor):
-        embeddings = embeddings.cpu().numpy().tolist()
-        records = [{key: embedding} for key, embedding in zip(keys, embeddings)]
-        embedding_table.insert_many(records)
-
-    return store_embeddings
+        return id, image
 
 
 def load_model(device="cuda"):
@@ -81,47 +73,62 @@ def load_model(device="cuda"):
     return model
 
 
-def preprocess_image(image: Image):
-    preprocess = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+def preprocess_image(image):
+    preprocess = transforms.Compose(
+        [
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
     return preprocess(image)
-
-
-def get_embeddings(images: torch.Tensor, layer_from_end=2, device="cuda") -> torch.Tensor:
-    model = load_model()
-    activation_extractor = ActivationExtractor(model, layer_from_end=layer_from_end)
-    images = images.to(device)
-    embeddings = activation_extractor.get_activation(images).to(device)
-    return embeddings
 
 
 if __name__ == "__main__":
     print("Starting the embedding extraction process")
 
-    # Hyperparameters
-    batch_size = 16
-    num_workers = 4
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    client = connect()
+    db = client["nytimes"]
 
-    # Create dataset and dataloader
-    dataset = ImageDataset(image_folder="/data/images/", sample=764471)
-    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
-
-    save_embeddings = embedding_saver_factory()
+    # check/create place_embeddings
+    collection_list = db.list_collection_names()
+    collection_name = "place_embeddings"
+    if not collection_name in collection_list:
+        db.create_collection(collection_name)
+    embedding_table = db["place_embeddings"]
     print("Connected to the database")
 
+    # remove all documents from the collection to make sure there are no duplicates
+    embedding_table.delete_many({})
+
+    # Hyperparameters
+    batch_size = 1024
+    num_workers = 4
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+
+    # Create dataset and dataloader
+    dataset = ImageDataset(client=client, image_folder="/app/data/nytimes/images_processed/", sample=764471)
+    dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
+
+    def store_embeddings(keys, embeddings: torch.Tensor):
+        embeddings = embeddings.cpu().numpy().tolist()
+        records = [{key: embedding} for key, embedding in zip(keys, embeddings)]
+        embedding_table.insert_many(records)
+
+    layer_from_end = 2
+
+    print(f"Loading Model")
+    model = load_model()
+    activation_extractor = ActivationExtractor(model, layer_from_end=layer_from_end)
+
+    print(f"Starting scene embedding")
     counter = 0
     for img_hashes, images in tqdm(dataloader, desc="Extracting Embeddings"):
-        try:
-            embeddings = get_embeddings(images, 2, device)
-            save_embeddings(img_hashes, embeddings)
-            counter += len(img_hashes)
-            if counter % 5000 == 0:
-                print(f"Extracted embeddings for {counter} images")
-        except Exception as e:
-            print(f"Failed to extract embeddings for batch with error {e}")
-            continue
+        images = images.to(device)
+        embeddings = activation_extractor.get_activation(images)
+        store_embeddings(img_hashes, embeddings)
+        counter += len(img_hashes)
+        if counter % 1000 == 0:
+            print(f"Extracted embeddings for {counter} images")
