@@ -9,10 +9,12 @@ services:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: secure_pw 
     volumes:
-      - database:/data/db
+      - ~/mai-data/database:/data/db
 
   training:
-    image: training 
+    build:
+      context: .
+      dockerfile: Dockerfile-training
     depends_on:
       - mongo_db
     networks:
@@ -21,7 +23,7 @@ services:
       - ./data:/app/data
       - cache_torch:/root/.cache/torch
       - cache:/app/cache
-      - /home/ml-stud14/mai-data/databases/nytimes-images/images_processed/:/data/images
+      - ~/mai-data/databases/nytimes-images/images_processed/:/data/images
     environment:
       - WANDB_API_KEY=${WANDB_API_KEY}
     deploy:
@@ -37,6 +39,5 @@ networks:
     driver: bridge
 
 volumes:
-  database:
   cache:
   cache_torch:
