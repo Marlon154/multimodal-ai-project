@@ -17,5 +17,5 @@ docker compose up -d
 [Overleaf](https://sharelatex.tu-darmstadt.de/project/6654a0cdac6c54d019b61b3a)
 
 # Authors
-- Jonas Milkovits
+- [Jonas Milkovits](https://github.com/j-milkovits)
 - Marlon May
