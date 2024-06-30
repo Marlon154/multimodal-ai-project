@@ -109,7 +109,7 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     # Create dataset and dataloader
-    dataset = ImageDataset(client=client, image_folder="/app/data/nytimes/images_processed/", sample=764471)
+    dataset = ImageDataset(client=client, image_folder="/data/images/", sample=764471)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
 
     def store_embeddings(keys, embeddings: torch.Tensor):

@@ -8,7 +8,7 @@ from model import BadNews
 tokenizer = RobertaTokenizer.from_pretrained("roberta-large")
 roberta_model = RobertaModel.from_pretrained("roberta-large")
 
-text = "The cat sat on the mat"
+text = ["The cat sat on the mat", "dsadad osa oas m as"]
 
 # tokenize and encode
 inputs = tokenizer(text, return_tensors="pt", max_length=10, truncation=True, padding="max_length")

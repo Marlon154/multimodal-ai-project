@@ -3,12 +3,11 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
+from torchvision.transforms import ToTensor, Normalize, Compose, Resize, CenterCrop
 from tqdm import tqdm
-from transformers import BertTokenizer, RobertaModel
-from torchvision.transforms import Compose, Normalize, ToTensor
+from transformers import RobertaTokenizer, RobertaModel
 from pymongo import MongoClient
 import logging
-
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +15,7 @@ logger = logging.getLogger(__name__)
 class TaTDatasetReader(Dataset):
     def __init__(
             self,
+            image_encoder,
             image_dir: str,
             mongo_host: str = 'localhost',
             mongo_port: int = 27017,
@@ -24,15 +24,18 @@ class TaTDatasetReader(Dataset):
             n_faces: int = None,
             roberta_model: str = 'roberta-base',
             max_length: int = 512,
+            context_before: int = 8,
+            context_after: int = 8,
             seed: int = 464896,
             device: str = 'cuda',
+            split: str = 'train',
             dtype: torch.dtype = torch.float32,
-            # modalities: list = ['scene']
     ):
-        self.tokenizer = BertTokenizer.from_pretrained(roberta_model)
         self.client = MongoClient(f"mongodb://root:secure_pw@{mongo_host}:{mongo_port}/")
         self.db = self.client.nytimes
-        self.image_dir = image_dir
+        self.context_before = context_before
+        self.context_after = context_after
+
         self.preprocess = Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
         self.use_caption_names = use_caption_names
         self.use_objects = use_objects
@@ -42,193 +45,153 @@ class TaTDatasetReader(Dataset):
         self.device = device
         self.dtype = dtype
 
+        self.image_dir = image_dir
+        self.image_encoder = image_encoder
+        self.image_transforms = Compose([
+            Resize((256, 256)),
+            CenterCrop(224),
+            ToTensor(),
+            Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        self.tokenizer = RobertaTokenizer.from_pretrained(roberta_model)
         self.roberta = RobertaModel.from_pretrained(roberta_model)
+        self.roberta.to(device)
+        self.roberta.eval()
 
-    def _read(self, split: str):
-        """
-        Read the dataset from the MongoDB database and yield instances
+        # self.data = self._load_data(split)
 
-        Args:
-            split (str): the split to read from (train, valid, or test)
-        """
-        if split not in ['train', 'valid', 'test']:
-            raise ValueError(f'Unknown split: {split}')
+    def load_data(self, split: str):
+        """Load and preprocess the dataset."""
+        logger.info(f'Loading {split} data')
+        data = []
+        projection = ['_id', 'parsed_section', 'image_positions', 'headline', 'web_url']
 
-        logger.info('Grabbing all article IDs')
-        sample_cursor = self.db.articles.find({'split': split,}, projection=['_id']).sort('_id', pymongo.ASCENDING)
-        ids = np.array([article['_id'] for article in tqdm(sample_cursor)])
-        sample_cursor.close()
-        self.rs.shuffle(ids)
+        for article in tqdm(self.db.articles.find({'split': split}, projection=projection)):
+            article_data = self._process_article(article)
+            data.extend(article_data)
 
-        projection = ['_id', 'parsed_section.type', 'parsed_section.text', 'parsed_section.hash', 'parsed_section.parts_of_speech', 'parsed_section.facenet_details', 'parsed_section.named_entities', 'image_positions', 'headline', 'web_url', 'n_images_with_faces']
+        return data
 
-        for article_id in ids:
-            article = self.db.articles.find_one({'_id': {'$eq': article_id}}, projection=projection)
-            sections = article['parsed_section']
-            image_positions = article['image_positions']
-            for pos in image_positions:
-                title = ''
-                if 'main' in article['headline']:
-                    title = article['headline']['main'].strip()
-                paragraphs = []
-                named_entities = set()
-                n_words = 0
-                if title:
-                    paragraphs.append(title)
-                    named_entities.union(self._get_named_entities(article['headline']))
-                    n_words += len(self.to_token_ids(title))
+    def _process_article(self, article):
+        """Process a single article and all its images."""
+        article_data = []
+        sections = article['parsed_section']
 
-                caption = sections[pos]['text'].strip()
-                if not caption:
-                    continue
+        for pos in article['image_positions']:
+            if pos >= len(sections) or sections[pos]['type'] != 'caption':
+                continue
 
-                if self.n_faces is not None:
-                    n_persons = self.n_faces
-                elif self.use_caption_names:
-                    n_persons = len(self._get_person_names(sections[pos]))
-                else:
-                    n_persons = 4
+            caption = sections[pos]['text'].strip()
+            if not caption:
+                continue
 
-                before = []
-                after = []
-                i = pos - 1
-                j = pos + 1
-                for k, section in enumerate(sections):
-                    if section['type'] == 'paragraph':
-                        paragraphs.append(section['text'])
-                        named_entities |= self._get_named_entities(section)
-                        break
+            image_hash = sections[pos]['hash']
+            image_path = os.path.join(self.image_dir, f"{image_hash}.jpg")
+            try:
+                image = Image.open(image_path).convert('RGB')
+            except (FileNotFoundError, OSError):
+                logger.error(f"Could not open image at {image_path}")
+                continue
 
-                while True:
-                    if i > k and sections[i]['type'] == 'paragraph':
-                        text = sections[i]['text']
-                        before.insert(0, text)
-                        named_entities |= self._get_named_entities(sections[i])
-                        n_words += len(self.to_token_ids(text))
-                    i -= 1
+            # Caption
+            tokenized_caption = self.tokenizer(caption, max_length=self.max_length, truncation=True, padding='max_length')
+            caption_input_ids = tokenized_caption["input_ids"]
+            caption_attention_mask = tokenized_caption["attention_mask"]
+            outputs = self.roberta(caption_input_ids, attention_mask=caption_attention_mask)
+            caption_embedding = outputs.last_hidden_state.transpose(0, 1)
 
-                    if k < j < len(sections) and sections[j]['type'] == 'paragraph':
-                        text = sections[j]['text']
-                        after.append(text)
-                        named_entities |= self._get_named_entities(sections[j])
-                        n_words += len(self.to_token_ids(text))
-                    j += 1
+            # Text
+            text = self._get_context(article, pos)
+            tokenized_text = self.tokenizer(text, max_length=self.max_length, truncation=True, padding='max_length')
+            text_input_ids = tokenized_text["input_ids"]
+            text_attention_mask = tokenized_text["attention_mask"]
+            outputs = self.roberta(text_input_ids, attention_mask=text_attention_mask)
+            text_embedding = outputs.last_hidden_state.transpose(0, 1)
 
-                    if n_words >= 510 or (i <= k and j >= len(sections)):
-                        break
+            # Image
+            image_tensor = self.image_transforms(image).unsqueeze(0)
+            with torch.no_grad():
+                image_embedding = self.image_transforms(image_tensor)
+                image_embedding = self.image_encoder(image_embedding)
 
-                image_path = os.path.join(self.image_dir, f"{sections[pos]['hash']}.jpg")
-                # Get Image
-                try:
-                    image = Image.open(image_path)
-                except (FileNotFoundError, OSError):
-                    logger.error(f"Could not open image at {image_path}, continue training without it")
-                    continue
+            # Faces
+            if 'facenet_details' in sections[pos]:
+                faces = sections[pos]['facesnet_details']['embeddings']
+                tmp = torch.tensor(faces).unsqueeze(1)
+                faces = torch.zeros(faces.shape[0], 1, self.tokenizer.hidden_size)
+                faces[:,:,:512] = tmp
+            else:
+                faces = torch.zeros(0, 1, self.tokenizer.config.hidden_size)
+            image_embedding = image_embedding.to(self.device, dtype=self.dtype)
 
-                # Scene Embedding for each Image
-                caption_id = sections[pos]['hash']
-                scene_embedding = self.db.scenes.find_one({'id': caption_id, }, projection=['embedding'])
+            # Objects
+            objects = self.db.objects.find_one({'_id': image_hash})
+            if objects is not None:
+                objects = objects['objects_features']
+            else:
+                objects = torch.zeros(0, 1, self.tokenizer.config.hidden_size)
 
-                # Facenet Details
-                if 'facenet_details' not in sections[pos] or n_persons == 0:
-                    face_embeds = np.array([[]])
-                else:
-                    face_embeds = sections[pos]['facenet_details']['embeddings']
-                    # Keep only the top faces (sorted by size)
-                    face_embeds = np.array(face_embeds[:n_persons])
+            article_data.append({
+                'image': image_embedding,
+                'caption': caption_embedding,
+                'context': text_embedding,
+                'faces': faces,
+                'objects': objects,
+            })
 
-                paragraphs = paragraphs + before + after
-                named_entities = sorted(named_entities)
+        return article_data
 
-                # Object Features
-                obj_feats = None
-                if self.use_objects:
-                    obj = self.db.objects.find_one({'_id': sections[pos]['hash']})
-                    if obj is not None:
-                        obj_feats = obj['object_features']
-                        if len(obj_feats) == 0:
-                            obj_feats = np.array([[]])
-                        else:
-                            obj_feats = np.array(obj_feats)
-                    else:
-                        obj_feats = np.array([[]])
+    def _get_context(self, article, pos):
+        """Extract context from the article."""
+        context = []
+        if 'main' in article['headline']:
+            context.append(article['headline']['main'].strip())
 
-                yield self.article_to_instance(
-                    paragraphs, named_entities, image, caption, image_path, article['web_url'], pos, face_embeds, obj_feats)
+        sections = article['parsed_section']
+        for i, section in enumerate(sections):
+            if section['type'] == 'paragraph':
+                if pos - self.context_before <= i <= pos + self.context_after:
+                    context.append(section['text'])
 
-    def article_to_instance(
-            self,
-            paragraphs,
-            named_entities,
-            image,
-            caption,
-            image_path,
-            web_url,
-            pos,
-            face_embeds,
-            obj_feats
-    ):
-        context = '\n'.join(paragraphs).strip()
+        return ' '.join(context)
 
-        # Tokenize the context
-        context_tokens = self.tokenizer(context, add_special_tokens=True, max_length=self.max_length,
-                                                    padding='max_length', truncation=True, return_tensors='pt')
+    def __len__(self):
+        return len(self.data)
 
-        # Get the embeddings from the RoBERTa model
+    def __getitem__(self, idx):
+        item = self.data[idx]
+
+        image = self.image_transform(item['image'])
+
+        context_encoding = self.tokenizer.encode_plus(
+            item['context'],
+            max_length=self.max_length,
+            padding='max_length',
+            truncation=True,
+            return_tensors='pt'
+        )
+
+        caption_encoding = self.tokenizer.encode_plus(
+            item['caption'],
+            max_length=self.max_length,
+            padding='max_length',
+            truncation=True,
+            return_tensors='pt'
+        )
+
         with torch.no_grad():
-            context_embeddings = self.roberta(context_tokens['input_ids'], attention_mask=context_tokens['attention_mask'])[0]
+            context_embeddings = self.roberta(
+                context_encoding['input_ids'].squeeze(0),
+                attention_mask=context_encoding['attention_mask'].squeeze(0)
+            )[0]
 
-        caption_tokens = torch.tensor(
-            self.tokenizer(caption, add_special_tokens=True, max_length=self.max_length,
-                           padding='max_length', truncation=True, return_tensors='pt'),
-            device=self.device,
-            dtype=self.dtype
-        )
-        name_token_list = torch.tensor([
-            self.tokenizer(n, add_special_tokens=True, max_length=self.max_length, padding='max_length',
-                                       truncation=True, return_tensors='pt') for n in named_entities],
-            device=self.device,
-            dtype=self.dtype
-        )
-
-        fields = {
-            'context': torch.tensor(context_embeddings, dtype=self.dtype, device=self.device),
-            'names': name_token_list,
+        return {
             'image': image,
-            'caption': caption_tokens,
-            'face_embeds': torch.tensor(face_embeds, dtype=self.dtype, device=self.device),
-            'obj_embeds': torch.tensor(obj_feats, dtype=self.dtype, device=self.device) if obj_feats is not None else None,
-            'named_entities': torch.tensor(named_entities, dtype=self.dtype, device=self.device),
-            'image_pos': torch.tensor(pos, dtype=torch.int, device=self.device),
+            'context_ids': context_encoding['input_ids'].squeeze(0),
+            'context_mask': context_encoding['attention_mask'].squeeze(0),
+            'context_embeddings': context_embeddings,
+            'caption_ids': caption_encoding['input_ids'].squeeze(0),
+            'caption_mask': caption_encoding['attention_mask'].squeeze(0),
+            'named_entities': item['named_entities'],
         }
-
-        if obj_feats is not None:
-            fields['obj_embeds'] = torch.tensor(obj_feats, dtype=torch.float)
-        return fields
-
-    def _get_named_entities(self, section):
-        # These name indices have the right end point excluded
-        names = set()
-
-        if 'named_entities' in section:
-            ners = section['named_entities']
-            for ner in ners:
-                if ner['label'] in ['PERSON', 'ORG', 'GPE']:
-                    names.add(ner['text'])
-
-        return names
-
-    def _get_person_names(self, section):
-        # These name indices have the right end point excluded
-        names = set()
-
-        if 'named_entities' in section:
-            ners = section['named_entities']
-            for ner in ners:
-                if ner['label'] in ['PERSON']:
-                    names.add(ner['text'])
-
-        return names
-
-    def to_token_ids(self, sentence):
-        return self.tokenizer(sentence, add_special_tokens=True)
