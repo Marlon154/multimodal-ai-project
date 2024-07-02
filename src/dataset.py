@@ -69,9 +69,10 @@ class TaTDatasetReader(Dataset):
         self.article_ids_image_pos = []
         # load article ids
         projection = ["_id", "image_positions"]
-        articles = self.db.articles.find({"split": split}, projection=projection)
-        for article in articles:
+        articles = self.db.articles.find({"split": split}, projection=projection).limit(100000)
+        for article in tqdm(articles, desc="Article Preprocessing"):
             for pos in article["image_positions"]:
+                # TODO: clean up articles with no captions or images which don't exist
                 self.article_ids_image_pos.append(f"{article["_id"]}_{pos}")
 
         self.counter = 0
@@ -81,11 +82,14 @@ class TaTDatasetReader(Dataset):
 
         def get_empty_result():
             return {
-                "image": torch.zeros(0, 1024),
+                "caption_tokenids": torch.zeros(0, 50265),
                 "caption": torch.zeros(0, 1024),
-                "context": torch.zeros(0, 1024),
-                "faces": torch.zeros(0, 1024),
-                "objects": torch.zeros(0, 1024),
+                "contexts": [
+                    torch.zeros(0, 1024),
+                    torch.zeros(0, 1024),
+                    torch.zeros(0, 1024),
+                    torch.zeros(0, 1024),
+                ],
             }
 
         sections = article["parsed_section"]
@@ -137,7 +141,7 @@ class TaTDatasetReader(Dataset):
             image_embedding = image_embedding.permute(1, 2, 0)
             image_embedding = image_embedding.reshape(-1, 1, 2048)
             # downsample 2048 -> 1024
-            # shape: (49, 1, 1024)
+            # shape: (49, 1024)
             image_embedding = image_embedding[:, :, ::2].squeeze()
 
         # Faces
@@ -159,11 +163,14 @@ class TaTDatasetReader(Dataset):
             objects = torch.zeros(0, self.d_model)
 
         return {
-            "image": image_embedding,
-            "caption": caption_embedding,
-            "context": text_embedding,
-            "faces": faces,
-            "objects": objects,
+            "caption_tokenids": caption_input_ids,
+            "caption": caption_embedding.cpu(),
+            "contexts": [
+                text_embedding.cpu(),
+                image_embedding.cpu(),
+                faces.cpu(),
+                objects.cpu(),
+            ],
         }
 
     def _get_context(self, article, pos):

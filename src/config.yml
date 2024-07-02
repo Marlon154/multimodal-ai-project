@@ -2,9 +2,10 @@ wandb:
   project: "MAI-Project"
 
 dataset:
-  mongo_host: 'mongo_db'
+  mongo_host: 'localhost'
   mongo_port: 27017
-  image_dir: "/data/images"
+  image_dir: "./data/nytimes/images_processed/"
+  # image_dir: "/data/images"
   seed: 55486448734583
 
 encoder:
@@ -23,9 +24,9 @@ training:
   vocab_size: 50265
   max_target_positions: 512
   weight_decay: 0.0001
-  num_train_epochs: 10
-  per_device_train_batch_size: 16
-  per_device_eval_batch_size: 16
+  num_train_epochs: 1
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
   output_dir: 'output'
   logging_dir: 'logs'
   loss_fn: 'adaptive_loss'

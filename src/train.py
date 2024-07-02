@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Iterable
 
 import torch
 import yaml
@@ -37,21 +37,9 @@ def create_data_collator(tokenizer):
     """Create a data collator for batching."""
 
     def collate_fn(batch):
-        images = torch.stack([item["image"] for item in batch])
-        context_ids = torch.stack([item["context_ids"] for item in batch])
-        context_mask = torch.stack([item["context_mask"] for item in batch])
-        context_embeddings = torch.stack([item["context_embeddings"] for item in batch])
-        caption_ids = torch.stack([item["caption_ids"] for item in batch])
-        caption_mask = torch.stack([item["caption_mask"] for item in batch])
-
-        return {
-            "images": images,
-            "context_ids": context_ids,
-            "context_mask": context_mask,
-            "context_embeddings": context_embeddings,
-            "caption_ids": caption_ids,
-            "caption_mask": caption_mask,
-        }
+        if batch is Iterable:
+            return batch[0]
+        return batch
 
     return collate_fn
 
@@ -59,11 +47,8 @@ def create_data_collator(tokenizer):
 class BadNewsTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         outputs = model(
-            images=inputs["images"],
-            context_embeddings=inputs["context_embeddings"],
-            context_mask=inputs["context_mask"],
-            caption_ids=inputs["caption_ids"],
-            caption_mask=inputs["caption_mask"],
+            tgt=inputs[:][0]["caption"],
+            contexts=inputs[:][0]["contexts"],
         )
         loss = outputs.loss
         return (loss, outputs) if return_outputs else loss
