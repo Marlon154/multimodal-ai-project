@@ -72,7 +72,7 @@ class TaTDatasetReader(Dataset):
         # load article ids
         projection = ["_id", "image_positions", "parsed_section"]
         articles = self.db.articles.find({"split": split}, projection=projection)  # todo remove
-        for article in tqdm(articles, desc="Article Preprocessing"):
+        for article in tqdm(articles, desc="Article Preprocessing", total=434314):
             for pos in article["image_positions"]:
                 # TODO: clean up articles with no captions or images which don't exist
                 caption = article["parsed_section"][pos]["text"].strip()

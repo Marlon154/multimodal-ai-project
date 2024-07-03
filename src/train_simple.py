@@ -37,7 +37,8 @@ def create_model(config: Dict, vocab_size) -> BadNews:
 
 def setup(rank, world_size):
     if rank == 0:
-        wandb.init(project="MAI-Project", mode="offline")
+        wandb.init(project="MAI-Project")
+        print("Prepare DDP")
 
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
@@ -104,8 +105,11 @@ def train(rank, world_size, config):
             loss = loss.item()
             train_loss.append(loss)
 
-        if rank == 0:
-            wandb.log({"epoch": epoch, "loss": sum(train_loss) / 16})
+            if rank == 0:
+                wandb.log({"epoch": epoch, "loss": sum(train_loss) / len(train_loss)})
+
+            del caption, contexts, caption_tokenids, output, loss
+            torch.cuda.empty_cache()
 
     if rank == 0:
         torch.save(model.module.state_dict(), "/home/ml-stud14/mai-data/output/model.pt")
