@@ -1,20 +1,20 @@
-from typing import Dict, Iterable
-
+import os
 import torch
 import torch.nn as nn
-import yaml
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
-from transformers import (RobertaModel, RobertaTokenizer, Trainer,
-                          TrainingArguments)
-
 import wandb
+import yaml
+from typing import Dict
 from dataset import TaTDatasetReader, collate_fn
 from model import BadNews
+from transformers import RobertaTokenizer
 
 
 def load_config(config_path: str) -> Dict:
-    """Load configuration from a YAML file."""
     with open(config_path, "r") as stream:
         try:
             return yaml.safe_load(stream)
@@ -23,7 +23,6 @@ def load_config(config_path: str) -> Dict:
 
 
 def create_model(config: Dict, vocab_size) -> BadNews:
-    """Create a BadNews model instance from configuration."""
     return BadNews(
         vocab_size=vocab_size,
         d_model=config["decoder"]["hidden_size"],
@@ -36,8 +35,24 @@ def create_model(config: Dict, vocab_size) -> BadNews:
     )
 
 
-def main():
-    config = load_config("src/config.yml")
+def setup(rank, world_size):
+    if rank == 0:
+        wandb.init(project="MAI-Project", mode="offline")
+
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+
+def cleanup():
+    dist.destroy_process_group()
+
+
+def train(rank, world_size, config):
+    setup(rank, world_size)
+
+    torch.cuda.set_device(rank)
+    device = torch.device(f"cuda:{rank}")
 
     eval_dataset = TaTDatasetReader(
         image_dir=config["dataset"]["image_dir"],
@@ -45,56 +60,65 @@ def main():
         mongo_port=config["dataset"]["mongo_port"],
         roberta_model=config["encoder"]["text_encoder"],
         max_length=config["training"]["max_target_positions"],
-        device=config["training"]["device"],
+        device=device,
         split="train",
     )
 
     tokenizer = RobertaTokenizer.from_pretrained(config["encoder"]["text_encoder"])
 
-    device = config["training"]["device"]
-
     model = create_model(config, tokenizer.vocab_size)
     model.to(device)
-    net = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3])
-    net.to(device)
+    model = DDP(model, device_ids=[rank])
 
-    batch_size = config["training"]["train_batch_size"]
-    dataloader = DataLoader(eval_dataset, shuffle=True, batch_size=batch_size, collate_fn=collate_fn)
+    batch_size = config["training"]["train_batch_size"] // world_size
+    sampler = DistributedSampler(eval_dataset, num_replicas=world_size, rank=rank, shuffle=True)
+    dataloader = DataLoader(eval_dataset, batch_size=batch_size, sampler=sampler, collate_fn=collate_fn)
 
     num_train_epochs = config["training"]["num_train_epochs"]
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(net.parameters(), config["training"]["learning_rate"])
+    optimizer = torch.optim.AdamW(model.parameters(), config["training"]["learning_rate"])
 
-    print("Start training")
-    for _ in range(num_train_epochs):
+    if rank == 0:
+        print("Start training")
+    print(len(eval_dataset))
+    for epoch in range(num_train_epochs):
+        model.train()
+        sampler.set_epoch(epoch)
         train_loss = []
 
-        for sample in tqdm(dataloader):
-            caption, contexts = sample["caption"].to(device), sample["contexts"]
+        for sample in tqdm(dataloader, disable=rank != 0):
+            caption = sample["caption"].to(device)
+            contexts = [context.to(device) for context in sample["contexts"]]
             caption_tokenids = sample["caption_tokenids"].to(device)
-            caption_mask = sample["caption_mask"].to(device)
-
-            for idx, context in enumerate(contexts):
-                contexts[idx] = context.to(device)
 
             optimizer.zero_grad()
 
-            output = net.forward(tgt_embeddings=caption, contexts=contexts)
+            output = model(tgt_embeddings=caption, contexts=contexts)
 
             loss = loss_fn(output.view(-1, output.size(-1)), caption_tokenids.view(-1))
             loss.backward()
-
-            wandb.log({"loss": loss})
 
             optimizer.step()
 
             loss = loss.item()
             train_loss.append(loss)
 
-    torch.save(model.state_dict(), "/output/model.pt")
+        if rank == 0:
+            wandb.log({"epoch": epoch, "loss": sum(train_loss) / 16})
+
+    if rank == 0:
+        torch.save(model.module.state_dict(), "/home/ml-stud14/mai-data/output/model.pt")
+
+    cleanup()
+
+
+def main():
+    config = load_config("src/config.yml")
+    world_size = 4
+    torch.multiprocessing.spawn(train, args=(world_size, config), nprocs=world_size, join=True)
 
 
 if __name__ == "__main__":
-    wandb.init(project="MAI-Project", mode="online")
+    wandb.init(project="MAI-Project")
     main()

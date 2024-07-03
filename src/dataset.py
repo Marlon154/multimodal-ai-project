@@ -70,14 +70,22 @@ class TaTDatasetReader(Dataset):
 
         self.article_ids_image_pos = []
         # load article ids
-        projection = ["_id", "image_positions"]
-        articles = self.db.articles.find({"split": split}, projection=projection).limit(100000)  # todo remove
+        projection = ["_id", "image_positions", "parsed_section"]
+        articles = self.db.articles.find({"split": split}, projection=projection)  # todo remove
         for article in tqdm(articles, desc="Article Preprocessing"):
             for pos in article["image_positions"]:
                 # TODO: clean up articles with no captions or images which don't exist
-                self.article_ids_image_pos.append(f"{article["_id"]}_{pos}")
+                caption = article["parsed_section"][pos]["text"].strip()
+                if not caption:
+                    continue
 
-        self.counter = 0
+                # Image
+                image_hash = article["parsed_section"][pos]["hash"]
+                image_path = os.path.join(self.image_dir, f"{image_hash}.jpg")
+                if not os.path.exists(image_path):
+                    logger.error(f"Could not open image at {image_path}")
+                    continue
+                self.article_ids_image_pos.append(f"{article["_id"]}_{pos}")
 
     def _process_image(self, article, image_position):
         """Process a single image of one article."""
@@ -97,8 +105,8 @@ class TaTDatasetReader(Dataset):
         sections = article["parsed_section"]
 
         caption = sections[image_position]["text"].strip()
-        if not caption:
-            return get_empty_result()
+        # if not caption:
+        #     return get_empty_result()
 
         # Caption
         tokenized_caption = self.tokenizer(
@@ -129,11 +137,7 @@ class TaTDatasetReader(Dataset):
         # Image
         image_hash = sections[image_position]["hash"]
         image_path = os.path.join(self.image_dir, f"{image_hash}.jpg")
-        try:
-            image = Image.open(image_path).convert("RGB")
-        except (FileNotFoundError, OSError):
-            logger.error(f"Could not open image at {image_path}")
-            return get_empty_result()
+        image = Image.open(image_path).convert("RGB")
 
         with torch.no_grad():
             image_tensor = self.image_transforms(image).unsqueeze(0).to(self.device)
