@@ -5,6 +5,7 @@ import os
 import torch
 from PIL import Image
 from pymongo import MongoClient
+from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 from torchvision import models
@@ -22,6 +23,7 @@ class TaTDatasetReader(Dataset):
         image_dir: str,
         mongo_host: str = "localhost",
         mongo_port: int = 27017,
+        mongo_password: str = "secure_pw",
         roberta_model: str = "roberta-large",
         max_length: int = 512,
         context_before: int = 8,
@@ -31,7 +33,7 @@ class TaTDatasetReader(Dataset):
         device: str = "cuda",
         dtype: torch.dtype = torch.float32,
     ):
-        self.client = MongoClient(f"mongodb://root:secure_pw@{mongo_host}:{mongo_port}/")
+        self.client = MongoClient(f"mongodb://root:{mongo_password}@{mongo_host}:{mongo_port}/")
         self.db = self.client.nytimes
         self.context_before = context_before
         self.context_after = context_after
@@ -69,7 +71,7 @@ class TaTDatasetReader(Dataset):
         self.article_ids_image_pos = []
         # load article ids
         projection = ["_id", "image_positions"]
-        articles = self.db.articles.find({"split": split}, projection=projection).limit(100000)
+        articles = self.db.articles.find({"split": split}, projection=projection).limit(100000)  # todo remove
         for article in tqdm(articles, desc="Article Preprocessing"):
             for pos in article["image_positions"]:
                 # TODO: clean up articles with no captions or images which don't exist
@@ -158,12 +160,13 @@ class TaTDatasetReader(Dataset):
         if objects is not None and len(objects["object_features"]) != 0:
             objects = torch.tensor(objects["object_features"])
             # downsample 2048 -> 1024
-            objects = objects[:, ::2]
+            objects = objects[:, ::2]  # todo
         else:
             objects = torch.zeros(0, self.d_model)
 
         return {
             "caption_tokenids": caption_input_ids,
+            "caption_mask": caption_attention_mask,
             "caption": caption_embedding.cpu(),
             "contexts": [
                 text_embedding.cpu(),
@@ -198,3 +201,30 @@ class TaTDatasetReader(Dataset):
         article = self.db.articles.find_one({"_id": article_id}, projection=projection)
 
         return self._process_image(article, int(image_pos))
+
+
+def collate_fn(batch):
+    caption_tokenids = [item['caption_tokenids'].squeeze(0) for item in batch]
+    captions = [item['caption'] for item in batch]
+    contexts = [item['contexts'] for item in batch]
+
+    # Pad caption token ids
+    caption_tokenids_padded = pad_sequence(caption_tokenids, batch_first=True, padding_value=1)  # 1 is the pad token ID for RoBERTa
+    caption_mask = (caption_tokenids_padded != 1).long()
+
+    # Pad captions and contexts
+    max_caption_len = max(cap.size(0) for cap in captions)
+    max_context_lens = [max(ctx[i].size(0) for ctx in contexts) for i in range(4)]
+
+    captions_padded = torch.stack([torch.cat([cap, torch.zeros(max_caption_len - cap.size(0), cap.size(1))]) for cap in captions])
+    contexts_padded = [
+        torch.stack([torch.cat([ctx[i], torch.zeros(max_context_lens[i] - ctx[i].size(0), ctx[i].size(1))]) for ctx in contexts])
+        for i in range(4)
+    ]
+
+    return {
+        'caption_tokenids': caption_tokenids_padded,
+        'caption_mask': caption_mask,
+        'caption': captions_padded,
+        'contexts': contexts_padded
+    }

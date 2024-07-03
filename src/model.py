@@ -19,7 +19,8 @@ class BadNews(nn.Module):
         super(BadNews, self).__init__()
 
         self.device = device
-        self.positional_encoding = self._generate_positional_encoding(d_model, max_seq_length)
+        self.d_model = d_model
+        self.max_seq_length = max_seq_length
 
         decoder_layer = TransformerDecoderLayer(
             d_model,
@@ -33,7 +34,7 @@ class BadNews(nn.Module):
         self.linear = nn.Linear(d_model, vocab_size)
 
     def _generate_positional_encoding(self, d_model, max_seq_length):
-        positional_encoding = torch.zeros(max_seq_length, d_model).to(self.device)
+        positional_encoding = torch.zeros(max_seq_length, d_model, device=self.device)
         position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
         positional_encoding[:, 0::2] = torch.sin(position * div_term)
@@ -42,7 +43,8 @@ class BadNews(nn.Module):
         return positional_encoding
 
     def forward(self, tgt_embeddings, contexts):
-        tgt_embeddings += self.positional_encoding[: tgt_embeddings.size(0), :]
+        positional_encoding = self._generate_positional_encoding(self.d_model, self.max_seq_length)
+        tgt_embeddings = tgt_embeddings + positional_encoding[: tgt_embeddings.size(0), :]
 
         # context adapter
         decoded_output = self.decoder(tgt=tgt_embeddings, memory=contexts)

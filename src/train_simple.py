@@ -9,7 +9,7 @@ from transformers import (RobertaModel, RobertaTokenizer, Trainer,
                           TrainingArguments)
 
 import wandb
-from dataset import TaTDatasetReader
+from dataset import TaTDatasetReader, collate_fn
 from model import BadNews
 
 
@@ -51,17 +51,20 @@ def main():
 
     tokenizer = RobertaTokenizer.from_pretrained(config["encoder"]["text_encoder"])
 
-    model = create_model(config, tokenizer.vocab_size)
     device = config["training"]["device"]
-    model.to(device)
 
-    dataloader = DataLoader(eval_dataset, shuffle=True, batch_size=1)
+    model = create_model(config, tokenizer.vocab_size)
+    model.to(device)
+    net = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3])
+    net.to(device)
+
+    batch_size = config["training"]["train_batch_size"]
+    dataloader = DataLoader(eval_dataset, shuffle=True, batch_size=batch_size, collate_fn=collate_fn)
 
     num_train_epochs = config["training"]["num_train_epochs"]
-    learning_rate = 5e-5
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), learning_rate)
+    optimizer = torch.optim.Adam(net.parameters(), config["training"]["learning_rate"])
 
     print("Start training")
     for _ in range(num_train_epochs):
@@ -70,26 +73,28 @@ def main():
         for sample in tqdm(dataloader):
             caption, contexts = sample["caption"].to(device), sample["contexts"]
             caption_tokenids = sample["caption_tokenids"].to(device)
+            caption_mask = sample["caption_mask"].to(device)
+
             for idx, context in enumerate(contexts):
                 contexts[idx] = context.to(device)
 
             optimizer.zero_grad()
 
-            output = model.forward(tgt_embeddings=caption, contexts=contexts)
+            output = net.forward(tgt_embeddings=caption, contexts=contexts)
 
-            loss = loss_fn(output.squeeze(), caption_tokenids.squeeze())
+            loss = loss_fn(output.view(-1, output.size(-1)), caption_tokenids.view(-1))
             loss.backward()
 
             wandb.log({"loss": loss})
 
             optimizer.step()
 
-            # only works for batch_size = 1 lol
+            loss = loss.item()
             train_loss.append(loss)
 
-    torch.save(model.state_dict(), "model.pt")
+    torch.save(model.state_dict(), "/output/model.pt")
 
 
 if __name__ == "__main__":
-    wandb.init(project="MAI-Project")
+    wandb.init(project="MAI-Project", mode="online")
     main()
