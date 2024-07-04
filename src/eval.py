@@ -6,6 +6,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
+from rouge_score import rouge_scorer
 from tqdm import tqdm
 import wandb
 import yaml
@@ -13,6 +15,7 @@ from typing import Dict
 from dataset import TaTDatasetReader, collate_fn
 from model import BadNews
 from transformers import RobertaTokenizer, RobertaModel
+import os
 
 
 def load_config(config_path: str) -> Dict:
@@ -65,7 +68,7 @@ def evaluate(config):
         roberta_model=config["encoder"]["text_encoder"],
         max_length=config["training"]["max_target_positions"],
         device=device,
-        split="test",
+        split="train",
     )
     dataloader = DataLoader(eval_dataset, batch_size=1, collate_fn=collate_fn)
 
@@ -80,7 +83,8 @@ def evaluate(config):
     start_token_id = tokenizer.bos_token_id
     end_token_id = tokenizer.eos_token_id
 
-    with torch.no_grad():
+    # with torch.no_grad():
+    for i in range(1):
         for i, sample in enumerate(tqdm(dataloader, desc="Evaluating")):
             contexts = sample["contexts"]
             caption_tokenids = sample["caption_tokenids"].to(device)
@@ -139,6 +143,19 @@ def evaluate(config):
     recall = recall_score(all_labels_padded, all_preds_padded, average='weighted')
     f1 = f1_score(all_labels_padded, all_preds_padded, average='weighted')
 
+    # Calculate BLEU-4
+    smoothing_function = SmoothingFunction().method4
+    bleu4 = corpus_bleu(all_true_texts, all_pred_texts, smoothing_function=smoothing_function)
+
+    # Calculate ROUGE score
+    rouge = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
+    rouge_scores = rouge.score(" ".join(sum(all_true_texts, [])), " ".join(sum(all_pred_texts, [])))
+    
+    rouge1 = rouge_scores['rouge1'].fmeasure
+    rouge2 = rouge_scores['rouge2'].fmeasure
+    rougeL = rouge_scores['rougeL'].fmeasure
+
+    # Log metrics
     wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1})
     wandb.finish()
 
