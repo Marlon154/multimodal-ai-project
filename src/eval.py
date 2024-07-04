@@ -36,7 +36,7 @@ def create_model(config: Dict, vocab_size) -> BadNews:
     )
 
 
-def load_model(config, model_path, from_checkpoint=True):
+def load_model(config, model_path, from_checkpoint=False):
     """Load the model from a file."""
     tokenizer = RobertaTokenizer.from_pretrained(config["encoder"]["text_encoder"])
     roberta_model = RobertaModel.from_pretrained(config["encoder"]["text_encoder"], device_map=config["training"]["device"])
@@ -69,7 +69,7 @@ def evaluate(config):
     )
     dataloader = DataLoader(eval_dataset, batch_size=1, collate_fn=collate_fn)
 
-    model, tokenizer, roberta_model = load_model(config, "/home/ml-stud14/mai-data/output/checkpoint_epoch_0_batch_7500.pt")
+    model, tokenizer, roberta_model = load_model(config, "/home/ml-stud14/mai-data/output/model.pt")
 
     print("Start testing")
     print(len(eval_dataset))
@@ -126,6 +126,7 @@ def evaluate(config):
                 print(f"Prediction: {pred_text}")
                 print(f"True caption: {true_text}")
                 print()
+                wandb.log({"example": i, "prediction": {pred_text}, "caption": true_text})
 
     # Pad sequences to the same length for metric calculation
     max_len = max(len(seq) for seq in all_preds + all_labels)
