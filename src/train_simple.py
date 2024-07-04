@@ -55,14 +55,14 @@ def train(rank, world_size, config):
     torch.cuda.set_device(rank)
     device = torch.device(f"cuda:{rank}")
 
-    eval_dataset = TaTDatasetReader(
+    train_dataset = TaTDatasetReader(
         image_dir=config["dataset"]["image_dir"],
         mongo_host=config["dataset"]["mongo_host"],
         mongo_port=config["dataset"]["mongo_port"],
         roberta_model=config["encoder"]["text_encoder"],
         max_length=config["training"]["max_target_positions"],
         device=device,
-        split="train",
+        split="valid",
     )
 
     tokenizer = RobertaTokenizer.from_pretrained(config["encoder"]["text_encoder"])
@@ -72,8 +72,8 @@ def train(rank, world_size, config):
     model = DDP(model, device_ids=[rank])
 
     batch_size = config["training"]["train_batch_size"] // world_size
-    sampler = DistributedSampler(eval_dataset, num_replicas=world_size, rank=rank, shuffle=True)
-    dataloader = DataLoader(eval_dataset, batch_size=batch_size, sampler=sampler, collate_fn=collate_fn)
+    sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
+    dataloader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, collate_fn=collate_fn)
 
     num_train_epochs = config["training"]["num_train_epochs"]
 
@@ -82,13 +82,21 @@ def train(rank, world_size, config):
 
     if rank == 0:
         print("Start training")
-    print(len(eval_dataset))
+    print(len(train_dataset))
+    output_dir = "/home/ml-stud14/mai-data/output"
+    os.makedirs(output_dir, exist_ok=True)
+
+    save_every = 5  # Save a checkpoint every 5 epochs
+    best_loss = float('inf')
+    save_every_n_epochs = 1
+    save_every_n_batches = 500
+
     for epoch in range(num_train_epochs):
         model.train()
         sampler.set_epoch(epoch)
         train_loss = []
 
-        for sample in tqdm(dataloader, disable=rank != 0):
+        for batch, sample in enumerate(tqdm(dataloader, disable=rank != 0)):
             caption = sample["caption"].to(device)
             contexts = [context.to(device) for context in sample["contexts"]]
             caption_tokenids = sample["caption_tokenids"].to(device)
@@ -106,15 +114,55 @@ def train(rank, world_size, config):
             train_loss.append(loss)
 
             if rank == 0:
-                wandb.log({"epoch": epoch, "loss": sum(train_loss) / len(train_loss)})
+                wandb.log({"epoch": epoch, "batch": batch, "step_loss": loss})
 
-            del caption, contexts, caption_tokenids, output, loss
+                # Save checkpoint every n batches
+                if (batch + 1) % save_every_n_batches == 0:
+                    batch_checkpoint_filename = f'checkpoint_epoch_{epoch}_batch_{batch + 1}.pt'
+                    save_checkpoint(model, optimizer, epoch, batch, loss, False, output_dir, batch_checkpoint_filename)
+                    print(f"Saved batch checkpoint: {batch_checkpoint_filename}")
+
+            del caption, contexts, caption_tokenids, output
             torch.cuda.empty_cache()
 
+        epoch_loss = sum(train_loss) / len(train_loss)
+
+        if rank == 0:
+            wandb.log({"epoch": epoch, "epoch_loss": epoch_loss})
+            print(f"Epoch {epoch}, Loss: {epoch_loss:.4f}")
+
+            # Save epoch checkpoint
+            is_best = epoch_loss < best_loss
+            best_loss = min(epoch_loss, best_loss)
+            epoch_checkpoint_filename = f'checkpoint_epoch_{epoch}.pt'
+            save_checkpoint(model, optimizer, epoch, batch, epoch_loss, is_best, output_dir, epoch_checkpoint_filename)
+            print(f"Saved epoch checkpoint: {epoch_checkpoint_filename}")
+
+            if (epoch + 1) % save_every_n_epochs == 0:
+                periodic_checkpoint_filename = f'periodic_checkpoint_epoch_{epoch}.pt'
+                save_checkpoint(model, optimizer, epoch, batch, epoch_loss, False, output_dir,
+                                periodic_checkpoint_filename)
+                print(f"Saved periodic checkpoint: {periodic_checkpoint_filename}")
+
     if rank == 0:
-        torch.save(model.module.state_dict(), "/home/ml-stud14/mai-data/output/model.pt")
+        print("Finished training")
+        torch.save(model.module.state_dict(), os.path.join(output_dir, "final_model.pt"))
+        print("Final model saved")
 
     cleanup()
+
+
+def save_checkpoint(model, optimizer, epoch, batch, loss, is_best, output_dir, filename):
+    checkpoint = {
+        'epoch': epoch,
+        'batch': batch,
+        'model_state_dict': model.module.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss,
+    }
+    torch.save(checkpoint, os.path.join(output_dir, filename))
+    if is_best:
+        torch.save(checkpoint, os.path.join(output_dir, 'best_model.pt'))
 
 
 def main():
