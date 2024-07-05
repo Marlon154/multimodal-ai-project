@@ -83,7 +83,7 @@ def train(rank, world_size, config):
     if rank == 0:
         print("Start training")
         print("Samples in Dataset:", len(train_dataset))
-    output_dir = "/home/ml-stud14/mai-data/output/run3/"
+    output_dir = "/home/ml-stud14/mai-data/output/run4/"
     os.makedirs(output_dir, exist_ok=True)
 
     best_loss = float('inf')
@@ -175,5 +175,4 @@ def main():
 
 
 if __name__ == "__main__":
-    wandb.init(project="MAI-Project")
     main()
