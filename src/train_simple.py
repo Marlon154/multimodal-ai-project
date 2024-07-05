@@ -62,7 +62,7 @@ def train(rank, world_size, config):
         roberta_model=config["encoder"]["text_encoder"],
         max_length=config["training"]["max_target_positions"],
         device=device,
-        split="valid",
+        split="train",
     )
 
     tokenizer = RobertaTokenizer.from_pretrained(config["encoder"]["text_encoder"])
