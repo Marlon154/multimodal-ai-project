@@ -1,4 +1,5 @@
 from pymongo import MongoClient, collection
+from pymongo.cursor import Cursor
 import numpy as np
 from matplotlib import pyplot as plt
 from typing import List, Iterable
@@ -11,8 +12,9 @@ def connect():
 
 
 def plotHistogram(lengths: ArrayLike, title=None) -> None:
-    # sizeUniqueValues = len(np.unique(lengths.astype(int)))
-    plt.hist(lengths, 50, edgecolor="black")
+    lengths = lengths if isinstance(lengths, np.ndarray) else np.array(lengths)
+    sizeUniqueValues = len(np.unique(lengths.astype(int)))
+    plt.hist(lengths, sizeUniqueValues, edgecolor="black")
     if title is None:
         plt.title("Histogram over article length")
     plt.xlabel("Article Length")
@@ -35,15 +37,37 @@ def plotHistogram(lengths: ArrayLike, title=None) -> None:
     plt.show()
 
 
+def countLengthArticle(article: Cursor) -> int:
+    length = 0
+    for section in article["parsed_section"]:
+        if section["type"] == "paragraph":
+            # Alternatively use nltk.TweetTokenizer, but beware punctuation
+            length += str(section["text"]).count(" ") + 1
+    return length
+
+
 if __name__ == "__main__":
     # Connect to database
     client = connect()
     # db = client["nytimes"] # To connect to the full database
     db = client["nytimes_sample"]
     article_table = db["articles"]
-    result = article_table.find().limit(100)
-    assert result is not None
-    print(len(result))
+
+    # Preprocess all articles
+    preprocessed_articles = []
+    lengths = []
+    for article in article_table.find().limit(3):
+        length = countLengthArticle(article)
+        authorInfo = article["byline"]["person"]
+        lengths.append(length)
+        if len(authorInfo) == 0:
+            continue
+        authorInfo = authorInfo[0]
+        fullName = authorInfo["firstname"] + authorInfo["lastname"]
+        print(fullName)
+        preprocessed_articles.append((length, authorInfo))
+
+    plotHistogram(lengths)
 
     # print(result["byline"])
 # byline.person.firstname / .lastname /.title
