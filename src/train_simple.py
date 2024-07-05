@@ -62,7 +62,7 @@ def train(rank, world_size, config):
         roberta_model=config["encoder"]["text_encoder"],
         max_length=config["training"]["max_target_positions"],
         device=device,
-        split="train",
+        split="valid",
     )
 
     tokenizer = RobertaTokenizer.from_pretrained(config["encoder"]["text_encoder"])
@@ -107,7 +107,7 @@ def train(rank, world_size, config):
             # Shift to align
             output = output[:, :-1, :]
             caption_tokenids = caption_tokenids[:, 1:]
-            # loss = loss_fn(output, caption_tokenids)
+
             loss = loss_fn(output.reshape(-1, output.size(-1)), caption_tokenids.reshape(-1))
             loss.backward()
 

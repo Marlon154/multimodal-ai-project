@@ -46,8 +46,11 @@ class BadNews(nn.Module):
         positional_encoding = self._generate_positional_encoding(self.d_model, self.max_seq_length)
         tgt_embeddings = tgt_embeddings + positional_encoding[: tgt_embeddings.size(0), :]
 
+        # Generate target mask
+        tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt_embeddings.size(1), device=self.device)
+
         # context adapter
-        decoded_output = self.decoder(tgt=tgt_embeddings, memory=contexts)
+        decoded_output = self.decoder(tgt=tgt_embeddings, memory=contexts, tgt_mask=tgt_mask, tgt_is_causal=True)
 
         output = self.linear(decoded_output)
 

@@ -26,7 +26,7 @@ def load_config(config_path: str) -> Dict:
             raise RuntimeError(f"Error loading config: {exc}")
 
 
-def create_model(config: Dict, vocab_size) -> BadNews:
+def create_model(config: Dict, vocab_size, device) -> BadNews:
     return BadNews(
         vocab_size=vocab_size,
         d_model=config["decoder"]["hidden_size"],
@@ -35,31 +35,31 @@ def create_model(config: Dict, vocab_size) -> BadNews:
         dim_feedforward=config["decoder"]["ffn_embed_dim"],
         max_seq_length=config["training"]["max_target_positions"],
         ncontexts=config["decoder"]["layers"],
-        device=config["training"]["device"],
+        device=device,
     )
 
 
-def load_model(config, model_path, from_checkpoint=False):
+def load_model(config, model_path, from_checkpoint=False, device="cuda"):
     """Load the model from a file."""
     tokenizer = RobertaTokenizer.from_pretrained(config["encoder"]["text_encoder"])
-    roberta_model = RobertaModel.from_pretrained(config["encoder"]["text_encoder"], device_map=config["training"]["device"])
-    model = create_model(config, tokenizer.vocab_size)  # Initialize your model class here
+    roberta_model = RobertaModel.from_pretrained(config["encoder"]["text_encoder"], device_map=device)
+    model = create_model(config, tokenizer.vocab_size, device)  # Initialize your model class here
     if from_checkpoint:
-        tmp = torch.load(model_path, map_location=config["training"]["device"])
+        tmp = torch.load(model_path, map_location=device)
         state_dict = tmp["model_state_dict"]
     else:
-        state_dict = torch.load(model_path, map_location=config["training"]["device"])
+        state_dict = torch.load(model_path, map_location=device)
 
     # Remove 'module.' prefix if it exists (happens when model was saved with DataParallel)
     state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
 
     model.load_state_dict(state_dict)
-    model.to(config["training"]["device"])
+    model.to(device)
     return model, tokenizer, roberta_model
 
 
 def evaluate(config):
-    device = torch.device(f"cuda:0")
+    device = torch.device("cuda:5")
 
     eval_dataset = TaTDatasetReader(
         image_dir=config["dataset"]["image_dir"],
@@ -68,11 +68,16 @@ def evaluate(config):
         roberta_model=config["encoder"]["text_encoder"],
         max_length=config["training"]["max_target_positions"],
         device=device,
-        split="train",
+        split="valid",
     )
     dataloader = DataLoader(eval_dataset, batch_size=1, collate_fn=collate_fn)
 
-    model, tokenizer, roberta_model = load_model(config, "/home/ml-stud14/mai-data/output/model.pt")
+    model, tokenizer, roberta_model = load_model(
+        config,
+        "/home/ml-stud14/mai-data/output/run3/checkpoint_epoch_0_batch_2000.pt",
+        from_checkpoint=True,
+        device=device
+    )
 
     print("Start testing")
     print(len(eval_dataset))
@@ -83,11 +88,11 @@ def evaluate(config):
     start_token_id = tokenizer.bos_token_id
     end_token_id = tokenizer.eos_token_id
 
-    # with torch.no_grad():
-    for i in range(1):
+    with torch.no_grad():
         for i, sample in enumerate(tqdm(dataloader, desc="Evaluating")):
             contexts = sample["contexts"]
             caption_tokenids = sample["caption_tokenids"].to(device)
+            print("caption_tokenids", caption_tokenids.shape)
 
             for idx, context in enumerate(contexts):
                 contexts[idx] = context.to(device)
@@ -103,11 +108,12 @@ def evaluate(config):
 
                 # Forward pass
                 output = model.forward(tgt_embeddings=tgt_embeddings, contexts=contexts)
-
+                print(output.shape)
                 # Get the next token prediction
                 next_token_logits = output[:, -1, :]
+                print("next_token_logits", next_token_logits.shape)
                 next_token = next_token_logits.argmax(dim=-1)
-
+                print("next_token", next_token)
                 # Append the new token to the sequence
                 current_seq = torch.cat([current_seq, next_token.unsqueeze(0)], dim=1)
                 generated_sequence.append(next_token.item())
@@ -160,7 +166,17 @@ def evaluate(config):
     rougeL = rouge_scores['rougeL'].fmeasure
 
     # Log metrics
-    wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1, "bleu4": bleu4, "rouge": rouge_scores})
+    wandb.log({
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "bleu4": bleu4,
+        "rouge": rouge_scores,
+        "rouge1": rouge1,
+        "rouge2": rouge2,
+        "rougeL": rougeL,
+    })
     wandb.finish()
 
 
