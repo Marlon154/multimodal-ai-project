@@ -83,7 +83,7 @@ def train(rank, world_size, config):
     if rank == 0:
         print("Start training")
         print("Samples in Dataset:", len(train_dataset))
-    output_dir = "/home/ml-stud14/mai-data/output"
+    output_dir = "/home/ml-stud14/mai-data/output/run3/"
     os.makedirs(output_dir, exist_ok=True)
 
     best_loss = float('inf')
@@ -104,7 +104,11 @@ def train(rank, world_size, config):
 
             output = model(tgt_embeddings=caption, contexts=contexts)
 
-            loss = loss_fn(output.view(-1, output.size(-1)), caption_tokenids.view(-1))
+            # Shift to align
+            output = output[:, :-1, :]
+            caption_tokenids = caption_tokenids[:, 1:]
+            # loss = loss_fn(output, caption_tokenids)
+            loss = loss_fn(output.reshape(-1, output.size(-1)), caption_tokenids.reshape(-1))
             loss.backward()
 
             optimizer.step()
@@ -134,7 +138,7 @@ def train(rank, world_size, config):
             is_best = epoch_loss < best_loss
             best_loss = min(epoch_loss, best_loss)
             epoch_checkpoint_filename = f'checkpoint_epoch_{epoch}.pt'
-            save_checkpoint(model, optimizer, epoch, batch, epoch_loss, is_best, output_dir, epoch_checkpoint_filename)
+            save_checkpoint(model, optimizer, epoch, -1, epoch_loss, is_best, output_dir, epoch_checkpoint_filename)
             print(f"Saved epoch checkpoint: {epoch_checkpoint_filename}")
 
             if (epoch + 1) % save_every_n_epochs == 0:
