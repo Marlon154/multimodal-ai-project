@@ -1,89 +1,262 @@
+import gc
+import logging
 import os
-import json
-from PIL import Image
+from typing import List
 
 import torch
-from torch.utils.data import Dataset, DataLoader
-from transformers import BertTokenizer
+from PIL import Image
+from pymongo import MongoClient
+from torch._C import wait
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset
+from torch.utils.data.dataloader import DataLoader
+from torchvision import models
+from torchvision.transforms import (CenterCrop, Compose, Normalize, Resize,
+                                    ToTensor)
+from tqdm import tqdm
+from transformers import RobertaModel, RobertaTokenizer
 
-class NYTimesDataset(Dataset):
-    def __init__(self, json_dir, image_dir, tokenizer, max_seq_length=512, max_image_size=512):
-        self.json_dir = json_dir
+logger = logging.getLogger(__name__)
+
+
+class TaTDatasetReader(Dataset):
+    def __init__(
+        self,
+        image_dir: str,
+        mongo_host: str = "localhost",
+        mongo_port: int = 27017,
+        mongo_password: str = "secure_pw",
+        roberta_model: str = "roberta-large",
+        max_length: int = 512,
+        context_before: int = 8,
+        context_after: int = 8,
+        seed: int = 464896,
+        split: str = "train",
+        device: str = "cuda",
+        dtype: torch.dtype = torch.float32,
+        contexts: List[str] = ["article", "image", "faces", "objects"],
+    ):
+        self.client = MongoClient(f"mongodb://root:{mongo_password}@{mongo_host}:{mongo_port}/")
+        self.db = self.client.nytimes
+        self.context_before = context_before
+        self.context_after = context_after
+
+        self.preprocess = Compose([ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        self.max_length = max_length
+        self.device = device
+        self.dtype = dtype
+
+        self.data = []
+        self.d_model = 1024
+
+        self.contexts = contexts
+
         self.image_dir = image_dir
-        self.tokenizer = tokenizer
-        self.max_seq_length = max_seq_length
-        self.max_image_size = max_image_size
-        self.json_files = [file for file in os.listdir(json_dir) if file.endswith('.json')]
+        self.image_transforms = Compose(
+            [
+                Resize((256, 256)),
+                CenterCrop(224),
+                ToTensor(),
+                Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
+        # image encoder
+        resnet152 = models.resnet152(pretrained=True)
+        # remove the pooling and fully connected layers
+        modules = list(resnet152.children())[:-2]
+        self.image_encoder = torch.nn.Sequential(*modules)
+        self.image_encoder.eval()
+        self.image_encoder.to(device)
 
-    def __len__(self):
-        return len(self.json_files)
+        self.tokenizer = RobertaTokenizer.from_pretrained(roberta_model)
+        self.roberta = RobertaModel.from_pretrained(roberta_model)
+        self.roberta.to(device)
+        self.roberta.eval()
 
-    def __getitem__(self, idx):
-        json_file = os.path.join(self.json_dir, self.json_files[idx])
-        with open(json_file, 'r') as f:
-            data = json.load(f)
+        self.article_ids_image_pos = []
+        # load article ids
+        projection = ["_id", "image_positions", "parsed_section"]
+        articles = self.db.articles.find({"split": split}, projection=projection).limit(2)  # todo remove
+        for article in tqdm(articles, desc="Article Preprocessing", total=434314):
+            for pos in article["image_positions"]:
+                caption = article["parsed_section"][pos]["text"].strip()
+                if not caption:
+                    continue
 
-        # Extract relevant fields from the JSON data
-        headline = data['headline']['main']
-        article = ' '.join([section['text'] for section in data['parsed_section']])
-        image_hashes = [image['hash'] for image in data['multimedia'] if image['type'] == 'image']
+                # Image
+                image_hash = article["parsed_section"][pos]["hash"]
+                image_path = os.path.join(self.image_dir, f"{image_hash}.jpg")
+                if not os.path.exists(image_path):
+                    logger.error(f"Could not open image at {image_path}")
+                    continue
+                self.article_ids_image_pos.append(f"{article["_id"]}_{pos}")
 
-        # Tokenize headline and article
-        headline_inputs = self.tokenizer(headline, add_special_tokens=True, max_length=self.max_seq_length,
-                                         padding='max_length', truncation=True, return_tensors='pt')
-        article_inputs = self.tokenizer(article, add_special_tokens=True, max_length=self.max_seq_length,
-                                        padding='max_length', truncation=True, return_tensors='pt')
+    def _process_image(self, article, image_position):
+        """Process a single image of one article."""
 
-        # Load and preprocess images
-        images = []
-        for hash in image_hashes:
-            image_path = os.path.join(self.image_dir, hash)
-            image = Image.open(image_path).convert('RGB')
-            image = image.resize((self.max_image_size, self.max_image_size))
-            image = torch.tensor(image).permute(2, 0, 1)  # Convert to torch tensor and transpose to (C, H, W)
-            images.append(image)
+        def get_empty_result():
+            return {
+                "caption_tokenids": torch.zeros(0, 50265),
+                "caption": torch.zeros(0, 1024),
+                "contexts": [
+                    torch.zeros(0, 1024),
+                    torch.zeros(0, 1024),
+                    torch.zeros(0, 1024),
+                    torch.zeros(0, 1024),
+                ],
+            }
 
-        if len(images) == 0:
-            images = torch.zeros(1, 3, self.max_image_size, self.max_image_size)
-        else:
-            images = torch.stack(images)
+        sections = article["parsed_section"]
 
-        # Extract face and object embeddings
-        face_embeddings = []
-        object_embeddings = []
-        for section in data['parsed_section']:
-            if 'facenet_details' in section:
-                face_embeddings.extend(section['facenet_details']['embeddings'])
-            if 'object_details' in section:
-                object_embeddings.extend(section['object_details']['embeddings'])
+        caption = sections[image_position]["text"].strip()
+        # if not caption:
+        #     return get_empty_result()
 
-        if len(face_embeddings) == 0:
-            face_embeddings = torch.zeros(1, 512)  # Assuming face embeddings have 512 dimensions
-        else:
-            face_embeddings = torch.tensor(face_embeddings)
+        tokenized_caption = self.tokenizer(
+            caption,
+            max_length=self.max_length,
+            truncation=True,
+            # padding="max_length", # I think is doesn't really help and really sucks for performance
+            return_tensors="pt",
+        )
+        caption_input_ids = tokenized_caption["input_ids"].to(self.device)
+        caption_attention_mask = tokenized_caption["attention_mask"].to(self.device)
+        outputs = self.roberta(caption_input_ids, attention_mask=caption_attention_mask)
+        caption_embedding = outputs.last_hidden_state.squeeze()
 
-        if len(object_embeddings) == 0:
-            object_embeddings = torch.zeros(1, 512)  # Assuming object embeddings have 512 dimensions
-        else:
-            object_embeddings = torch.tensor(object_embeddings)
-
-        return {
-            'headline_input_ids': headline_inputs['input_ids'].squeeze(),
-            'headline_attention_mask': headline_inputs['attention_mask'].squeeze(),
-            'article_input_ids': article_inputs['input_ids'].squeeze(),
-            'article_attention_mask': article_inputs['attention_mask'].squeeze(),
-            'images': images,
-            'face_embeddings': face_embeddings,
-            'object_embeddings': object_embeddings
+        res = {
+            "caption_tokenids": caption_input_ids,
+            "caption_mask": caption_attention_mask,
+            "caption": caption_embedding.cpu(),
+            "contexts": [],
         }
 
+        # Text
+        if "article" in self.contexts:
+            text = self._get_context(article, image_position)
+            tokenized_text = self.tokenizer(
+                text,
+                max_length=self.max_length,
+                truncation=True,
+                # padding="max_length",
+                return_tensors="pt",
+            )
+            text_input_ids = tokenized_text["input_ids"].to(self.device)
+            text_attention_mask = tokenized_text["attention_mask"].to(self.device)
+            outputs = self.roberta(text_input_ids, attention_mask=text_attention_mask)
+            text_embedding = outputs.last_hidden_state.squeeze()
+            res["contexts"].append(text_embedding)
 
-# Create an instance of the NYTimesDataset
-json_dir = '/home/marlon/Git/sample/sample_json'
-image_dir = '/home/marlon/Git/sample/sample_images'
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-dataset = NYTimesDataset(json_dir, image_dir, tokenizer)
+        # Image
+        image_hash = sections[image_position]["hash"]
+        if "image" in self.contexts:
+            image_path = os.path.join(self.image_dir, f"{image_hash}.jpg")
+            image = Image.open(image_path).convert("RGB")
 
-# Create a DataLoader
-batch_size = 4
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+            with torch.no_grad():
+                image_tensor = self.image_transforms(image).unsqueeze(0).to(self.device)
+                image_embedding = self.image_encoder(image_tensor)
+                # shape: (1, 2048, 7, 7) -> (49, 1, 2048)
+                image_embedding = image_embedding.squeeze(0)
+                image_embedding = image_embedding.permute(1, 2, 0)
+                image_embedding = image_embedding.reshape(-1, 1, 2048)
+                # downsample 2048 -> 1024
+                # shape: (49, 1024)
+                image_embedding = image_embedding[:, :, ::2].squeeze()
+            res["contexts"].append(image_embedding)
+
+        # Faces
+        if "faces" in self.contexts:
+            if "facenet_details" in sections[image_position]:
+                tmp = torch.tensor(sections[image_position]["facenet_details"]["embeddings"])
+                faces = torch.zeros(tmp.shape[0], self.d_model)
+                # upsample 512 -> 1024
+                faces[:, :512] = tmp
+            else:
+                faces = torch.zeros(0, self.d_model)
+            res["contexts"].append(faces)
+
+        # Objects
+        if "objects" in self.contexts:
+            objects = self.db.objects.find_one({"_id": image_hash})
+            if objects is not None and len(objects["object_features"]) != 0:
+                objects = torch.tensor(objects["object_features"])
+                # downsample 2048 -> 1024
+                objects = objects[:, ::2]  # todo
+            else:
+                objects = torch.zeros(0, self.d_model)
+            res["contexts"].append(objects)
+
+        # scene embeddings
+        if "scene_embeddings" in self.contexts:
+            scene_embeddings = self.db.place_embeddings.find_one({"_id": image_hash})
+            if scene_embeddings is not None:
+                # adjust to scene embeddings
+                pass
+                # objects = torch.tensor(objects["object_features"])
+                # # downsample 2048 -> 1024
+                # objects = objects[:, ::2]  # todo
+            else:
+                scene_embeddings = torch.zeros(0, self.d_model)
+            res["contexts"].append(scene_embeddings)
+
+        return res
+
+    def _get_context(self, article, pos):
+        """Extract context from the article."""
+        context = []
+        if "main" in article["headline"]:
+            context.append(article["headline"]["main"].strip())
+
+        sections = article["parsed_section"]
+        for i, section in enumerate(sections):
+            if section["type"] == "paragraph":
+                if pos - self.context_before <= i <= pos + self.context_after:
+                    context.append(section["text"])
+
+        return " ".join(context)
+
+    def __len__(self):
+        return len(self.article_ids_image_pos)
+
+    def __getitem__(self, idx):
+        article_id, image_pos = self.article_ids_image_pos[idx].split("_")
+
+        projection = ["parsed_section", "image_positions", "headline"]
+
+        article = self.db.articles.find_one({"_id": article_id}, projection=projection)
+
+        return self._process_image(article, int(image_pos))
+
+
+def collate_fn(batch):
+    caption_tokenids = [item["caption_tokenids"].squeeze(0) for item in batch]
+    captions = [item["caption"] for item in batch]
+    contexts = [item["contexts"] for item in batch]
+
+    # Pad caption token ids
+    caption_tokenids_padded = pad_sequence(
+        caption_tokenids, batch_first=True, padding_value=1
+    )  # 1 is the pad token ID for RoBERTa
+    caption_mask = (caption_tokenids_padded != 1).long()
+
+    # Pad captions and contexts
+    max_caption_len = max(cap.size(0) for cap in captions)
+    max_context_lens = [max(ctx[i].size(0) for ctx in contexts) for i in range(4)]
+
+    captions_padded = torch.stack(
+        [torch.cat([cap, torch.zeros(max_caption_len - cap.size(0), cap.size(1))]) for cap in captions]
+    )
+    contexts_padded = [
+        torch.stack(
+            [torch.cat([ctx[i], torch.zeros(max_context_lens[i] - ctx[i].size(0), ctx[i].size(1))]) for ctx in contexts]
+        )
+        for i in range(4)
+    ]
+
+    return {
+        "caption_tokenids": caption_tokenids_padded,
+        "caption_mask": caption_mask,
+        "caption": captions_padded,
+        "contexts": contexts_padded,
+    }

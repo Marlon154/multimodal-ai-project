@@ -1,0 +1,37 @@
+wandb:
+  project: "MAI-Project"
+
+dataset:
+  mongo_host: 'localhost'
+  mongo_port: 27018
+  # image_dir: "./data/nytimes/images_processed/"
+  # image_dir: "/data/images"
+  image_dir: "/home/ml-stud14/mai-data/databases/nytimes-images/images_processed/"
+  seed: 55486448734583
+
+encoder:
+  text_encoder: 'roberta-large'
+
+decoder:
+  layers: 4
+  hidden_size: 1024
+  ffn_embed_dim: 4096
+  attention_heads: 16
+  dropout: 0.1
+  attention_dropout: 0.1
+
+training:
+  padding_value: 1
+  vocab_size: 50265
+  max_target_positions: 512
+  weight_decay: 0.0001
+  num_train_epochs: 1
+  train_batch_size: 64
+  eval_batch_size: 1
+  learning_rate: 0.0001
+  output_dir: '~/mai-data/output/'
+  logging_dir: 'logs'
+  loss_fn: 'adaptive_loss'
+  device: 'cuda'
+  local_rank: 3
+  dataloader_num_workers: 0
