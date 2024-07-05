@@ -56,18 +56,30 @@ if __name__ == "__main__":
     # Preprocess all articles
     preprocessed_articles = []
     lengths = []
-    for article in article_table.find().limit(3):
+    fullNames = []
+    for article in article_table.find().limit(1000):
         length = countLengthArticle(article)
         authorInfo = article["byline"]["person"]
         lengths.append(length)
         if len(authorInfo) == 0:
             continue
         authorInfo = authorInfo[0]
-        fullName = authorInfo["firstname"] + authorInfo["lastname"]
-        print(fullName)
-        preprocessed_articles.append((length, authorInfo))
+        fullName = authorInfo["firstname"] + authorInfo["lastname"] if authorInfo["lastname"] is not None else ""
+
+        fullNames.append(fullName)
+        preprocessed_articles.append((length, authorInfo, fullName))
 
     plotHistogram(lengths)
+
+    nameMarginalized = {name: [] for name in fullNames}
+    for articleInfo in preprocessed_articles:
+        nameMarginalized[articleInfo[2]].append(articleInfo[0])
+
+    authorLengths = []
+    for authorLength in nameMarginalized.values():
+        authorLengths.append(sum(authorLength) / len(authorLength))
+
+    plotHistogram(authorLengths, title="Average article length per author")
 
     # print(result["byline"])
 # byline.person.firstname / .lastname /.title
