@@ -57,7 +57,7 @@ if __name__ == "__main__":
     preprocessed_articles = []
     lengths = []
     fullNames = []
-    for article in article_table.find().limit(1000):
+    for article in article_table.find().limit(0):
         length = countLengthArticle(article)
         authorInfo = article["byline"]["person"]
         lengths.append(length)
