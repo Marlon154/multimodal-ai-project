@@ -156,7 +156,7 @@ def evaluate(config):
     rougeL = rouge_scores['rougeL'].fmeasure
 
     # Log metrics
-    wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1})
+    wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1, "bleu4": bleu4, "rouge": rouge_scores})
     wandb.finish()
 
 
