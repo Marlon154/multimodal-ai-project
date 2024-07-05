@@ -143,6 +143,10 @@ def evaluate(config):
     recall = recall_score(all_labels_padded, all_preds_padded, average='weighted')
     f1 = f1_score(all_labels_padded, all_preds_padded, average='weighted')
 
+    # Decode
+    all_true_texts = tokenizer.decode(all_preds)
+    all_pred_texts = tokenizer.decode(all_labels)
+
     # Calculate BLEU-4
     smoothing_function = SmoothingFunction().method4
     bleu4 = corpus_bleu(all_true_texts, all_pred_texts, smoothing_function=smoothing_function)
