@@ -11,7 +11,7 @@ import yaml
 from typing import Dict
 from dataset import TaTDatasetReader, collate_fn
 from model import BadNews
-from transformers import RobertaTokenizer
+from transformers import RobertaTokenizer, RobertaModel
 
 
 def load_config(config_path: str) -> Dict:
@@ -82,11 +82,10 @@ def train(rank, world_size, config):
 
     if rank == 0:
         print("Start training")
-    print(len(train_dataset))
+        print("Samples in Dataset:", len(train_dataset))
     output_dir = "/home/ml-stud14/mai-data/output"
     os.makedirs(output_dir, exist_ok=True)
 
-    save_every = 5  # Save a checkpoint every 5 epochs
     best_loss = float('inf')
     save_every_n_epochs = 1
     save_every_n_batches = 500
@@ -114,7 +113,7 @@ def train(rank, world_size, config):
             train_loss.append(loss)
 
             if rank == 0:
-                wandb.log({"epoch": epoch, "batch": batch, "step_loss": loss})
+                wandb.log({"loss": loss})
 
                 # Save checkpoint every n batches
                 if (batch + 1) % save_every_n_batches == 0:
