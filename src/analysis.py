@@ -2,7 +2,7 @@ from pymongo import MongoClient, collection
 from pymongo.cursor import Cursor
 import numpy as np
 from matplotlib import pyplot as plt
-from typing import List, Iterable
+from typing import List, Iterable, Union
 from numpy.typing import ArrayLike
 from scipy.stats import gamma
 
@@ -12,19 +12,20 @@ def connect():
     return client
 
 
-def plotHistogram(lengths: ArrayLike, title=None) -> None:
+def plotHistogram(lengths: ArrayLike, target, title=None) -> None:
     lengths = lengths if isinstance(lengths, np.ndarray) else np.array(lengths)
     sizeUniqueValues = len(np.unique(lengths.astype(int)))
 
-    shape, loc, scale = gamma.fit(lengths, loc=-80, scale=200)
-    x = np.linspace(0, np.max(lengths), 100)
+    # shape, loc, scale = gamma.fit(lengths, loc=-80, scale=200)
+    shape, loc, scale = gamma.fit(lengths)
+    x = np.linspace(0, np.max(lengths), 200)
     print(f"{(shape, loc, scale)=}")
     plt.plot(x, gamma.pdf(x, shape, loc, scale), "r-", lw=4, alpha=0.6, label="gamma pdf")
 
-    plt.hist(lengths, 80, edgecolor="black", density=True)
+    plt.hist(lengths, 150, edgecolor="black", density=True)
     if title is None:
         plt.title("Histogram over article length")
-    plt.xlabel("Article Length")
+    plt.xlabel(f"{target} Length")
     plt.ylabel("Frequency")
 
     mean = np.mean(lengths)
@@ -44,16 +45,23 @@ def plotHistogram(lengths: ArrayLike, title=None) -> None:
     plt.show()
 
 
-def countLengthArticle(article: Cursor) -> int:
+def countLengthArticle(article: Cursor, target: Union["text", "caption"] = "caption") -> int:
     length = 0
-    for section in article["parsed_section"]:
-        if section["type"] == "paragraph":
-            # Alternatively use nltk.TweetTokenizer, but beware punctuation
-            length += str(section["text"]).count(" ") + 1
+    if target == "text":
+        for section in article["parsed_section"]:
+            if section["type"] == "paragraph":
+                # Alternatively use nltk.TweetTokenizer, but beware punctuation
+                length += str(section["text"]).count(" ") + 1
+    elif target == "caption":
+        for section in article["parsed_section"]:
+            if section["type"] == "caption":
+                # Alternatively use nltk.TweetTokenizer, but beware punctuation
+                length += str(section["text"]).count(" ") + 1
     return length
 
 
 if __name__ == "__main__":
+    target = "caption"
     # Connect to database
     client = connect()
     # db = client["nytimes"] # To connect to the full database
@@ -76,7 +84,7 @@ if __name__ == "__main__":
         fullNames.append(fullName)
         preprocessed_articles.append((length, authorInfo, fullName))
 
-    plotHistogram(lengths)
+    plotHistogram(lengths, target)
 
     nameMarginalized = {name: [] for name in fullNames}
     for articleInfo in preprocessed_articles:
@@ -86,7 +94,7 @@ if __name__ == "__main__":
     for authorLength in nameMarginalized.values():
         authorLengths.append(sum(authorLength) / len(authorLength))
 
-    plotHistogram(authorLengths, title="Average article length per author")
+    plotHistogram(authorLengths, target, title="Average article length per author")
 
     # print(result["byline"])
 # byline.person.firstname / .lastname /.title
