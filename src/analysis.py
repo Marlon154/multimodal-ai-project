@@ -4,6 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from typing import List, Iterable
 from numpy.typing import ArrayLike
+from scipy.stats import gamma
 
 
 def connect():
@@ -14,7 +15,13 @@ def connect():
 def plotHistogram(lengths: ArrayLike, title=None) -> None:
     lengths = lengths if isinstance(lengths, np.ndarray) else np.array(lengths)
     sizeUniqueValues = len(np.unique(lengths.astype(int)))
-    plt.hist(lengths, sizeUniqueValues, edgecolor="black")
+
+    shape, loc, scale = gamma.fit(lengths, loc=-80, scale=200)
+    x = np.linspace(0, np.max(lengths), 100)
+    print(f"{(shape, loc, scale)=}")
+    plt.plot(x, gamma.pdf(x, shape, loc, scale), "r-", lw=4, alpha=0.6, label="gamma pdf")
+
+    plt.hist(lengths, 80, edgecolor="black", density=True)
     if title is None:
         plt.title("Histogram over article length")
     plt.xlabel("Article Length")
