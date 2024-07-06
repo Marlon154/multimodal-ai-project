@@ -13,6 +13,7 @@ from torchvision.transforms import (CenterCrop, Compose, Normalize, Resize,
                                     ToTensor)
 from tqdm import tqdm
 from transformers import RobertaModel, RobertaTokenizer
+from transformers import AutoTokenizer, AutoModel, DebertaV2ForSequenceClassification
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class TaTDatasetReader(Dataset):
         mongo_host: str = "localhost",
         mongo_port: int = 27017,
         mongo_password: str = "secure_pw",
-        roberta_model: str = "roberta-large",
+        embedding_model: str = "roberta-large",
         max_length: int = 512,
         context_before: int = 8,
         context_after: int = 8,
@@ -63,10 +64,21 @@ class TaTDatasetReader(Dataset):
         self.image_encoder.eval()
         self.image_encoder.to(device)
 
-        self.tokenizer = RobertaTokenizer.from_pretrained(roberta_model)
-        self.roberta = RobertaModel.from_pretrained(roberta_model)
-        self.roberta.to(device)
-        self.roberta.eval()
+
+        if embedding_model == 'roberta-large':
+            self.tokenizer = RobertaTokenizer.from_pretrained(embedding_model)
+            self.embedder = RobertaModel.from_pretrained(embedding_model)
+        elif embedding_model == 'intfloat/e5-large-v2':
+            self.tokenizer = AutoTokenizer.from_pretrained('intfloat/e5-large-v2')
+            self.embedder = AutoModel.from_pretrained('intfloat/e5-large-v2')
+        elif embedding_model == 'microsoft/deberta-v2-xlarge':
+            self.tokenizer = AutoTokenizer.from_pretrained('microsoft/deberta-v2-xlarge')
+            self.embedder = DebertaV2ForSequenceClassification.from_pretrained('microsoft/deberta-v2-xlarge')
+        else:
+            Exception(f'Error: unknown embedding model "{embedding_model}"')
+
+        self.embedder.to(device)
+        self.embedder.eval()
 
         self.article_ids_image_pos = []
         # load article ids
@@ -118,7 +130,7 @@ class TaTDatasetReader(Dataset):
         )
         caption_input_ids = tokenized_caption["input_ids"].to(self.device)
         caption_attention_mask = tokenized_caption["attention_mask"].to(self.device)
-        outputs = self.roberta(caption_input_ids, attention_mask=caption_attention_mask)
+        outputs = self.embedder(caption_input_ids, attention_mask=caption_attention_mask)
         caption_embedding = outputs.last_hidden_state.squeeze()
         # Text
         text = self._get_context(article, image_position)
@@ -131,7 +143,7 @@ class TaTDatasetReader(Dataset):
         )
         text_input_ids = tokenized_text["input_ids"].to(self.device)
         text_attention_mask = tokenized_text["attention_mask"].to(self.device)
-        outputs = self.roberta(text_input_ids, attention_mask=text_attention_mask)
+        outputs = self.embedder(text_input_ids, attention_mask=text_attention_mask)
         text_embedding = outputs.last_hidden_state.squeeze()
 
         # Image
