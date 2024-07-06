@@ -11,7 +11,7 @@ import yaml
 from typing import Dict
 from dataset import TaTDatasetReader, collate_fn
 from model import BadNews
-from transformers import RobertaTokenizer, RobertaModel
+from transformers import RobertaTokenizer
 
 
 def load_config(config_path: str) -> Dict:
@@ -49,7 +49,7 @@ def cleanup():
     dist.destroy_process_group()
 
 
-def train(rank, world_size, config):
+def train(rank, world_size, config, resume_from=None):
     setup(rank, world_size)
 
     torch.cuda.set_device(rank)
@@ -80,10 +80,20 @@ def train(rank, world_size, config):
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
     optimizer = torch.optim.AdamW(model.parameters(), config["training"]["learning_rate"])
 
+    if resume_from:
+        if rank == 0:
+            print(f"Resuming from checkpoint: {resume_from}")
+        checkpoint = torch.load(resume_from, map_location=device)
+        model.module.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        if rank == 0:
+            print(f"Resumed from epoch {start_epoch}")
+
     if rank == 0:
         print("Start training")
         print("Samples in Dataset:", len(train_dataset))
-    output_dir = "/home/ml-stud14/mai-data/output/run4/"
+    output_dir = "~/mai-data/output/"
     os.makedirs(output_dir, exist_ok=True)
 
     best_loss = float('inf')

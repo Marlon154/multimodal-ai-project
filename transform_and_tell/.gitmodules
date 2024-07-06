@@ -1,3 +1,0 @@
-[submodule "libs/apex"]
-	path = libs/apex
-	url = git@github.com:NVIDIA/apex.git

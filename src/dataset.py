@@ -1,4 +1,3 @@
-import gc
 import logging
 import os
 from typing import List
@@ -6,10 +5,8 @@ from typing import List
 import torch
 from PIL import Image
 from pymongo import MongoClient
-from torch._C import wait
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
-from torch.utils.data.dataloader import DataLoader
 from torchvision import models
 from torchvision.transforms import (CenterCrop, Compose, Normalize, Resize,
                                     ToTensor)
@@ -76,7 +73,7 @@ class TaTDatasetReader(Dataset):
         self.article_ids_image_pos = []
         # load article ids
         projection = ["_id", "image_positions", "parsed_section"]
-        articles = self.db.articles.find({"split": split}, projection=projection).limit(2)  # todo remove
+        articles = self.db.articles.find({"split": split}, projection=projection)  # todo remove
         for article in tqdm(articles, desc="Article Preprocessing", total=434314):
             for pos in article["image_positions"]:
                 caption = article["parsed_section"][pos]["text"].strip()
@@ -93,30 +90,14 @@ class TaTDatasetReader(Dataset):
 
     def _process_image(self, article, image_position):
         """Process a single image of one article."""
-
-        def get_empty_result():
-            return {
-                "caption_tokenids": torch.zeros(0, 50265),
-                "caption": torch.zeros(0, 1024),
-                "contexts": [
-                    torch.zeros(0, 1024),
-                    torch.zeros(0, 1024),
-                    torch.zeros(0, 1024),
-                    torch.zeros(0, 1024),
-                ],
-            }
-
         sections = article["parsed_section"]
 
         caption = sections[image_position]["text"].strip()
-        # if not caption:
-        #     return get_empty_result()
 
         tokenized_caption = self.tokenizer(
             caption,
             max_length=self.max_length,
             truncation=True,
-            # padding="max_length", # I think is doesn't really help and really sucks for performance
             return_tensors="pt",
         )
         caption_input_ids = tokenized_caption["input_ids"].to(self.device)
@@ -125,8 +106,8 @@ class TaTDatasetReader(Dataset):
         caption_embedding = outputs.last_hidden_state.squeeze()
 
         res = {
-            "caption_tokenids": caption_input_ids,
-            "caption_mask": caption_attention_mask,
+            "caption_tokenids": caption_input_ids.cpu(),
+            "caption_mask": caption_attention_mask.cpu(),
             "caption": caption_embedding.cpu(),
             "contexts": [],
         }
@@ -138,7 +119,6 @@ class TaTDatasetReader(Dataset):
                 text,
                 max_length=self.max_length,
                 truncation=True,
-                # padding="max_length",
                 return_tensors="pt",
             )
             text_input_ids = tokenized_text["input_ids"].to(self.device)
@@ -161,7 +141,6 @@ class TaTDatasetReader(Dataset):
                 image_embedding = image_embedding.permute(1, 2, 0)
                 image_embedding = image_embedding.reshape(-1, 1, 2048)
                 # downsample 2048 -> 1024
-                # shape: (49, 1024)
                 image_embedding = image_embedding[:, :, ::2].squeeze()
             res["contexts"].append(image_embedding)
 
@@ -191,11 +170,7 @@ class TaTDatasetReader(Dataset):
         if "scene_embeddings" in self.contexts:
             scene_embeddings = self.db.place_embeddings.find_one({"_id": image_hash})
             if scene_embeddings is not None:
-                # adjust to scene embeddings
                 pass
-                # objects = torch.tensor(objects["object_features"])
-                # # downsample 2048 -> 1024
-                # objects = objects[:, ::2]  # todo
             else:
                 scene_embeddings = torch.zeros(0, self.d_model)
             res["contexts"].append(scene_embeddings)
