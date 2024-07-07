@@ -1,6 +1,7 @@
 from pymongo import MongoClient, collection
 from pymongo.cursor import Cursor
 import numpy as np
+from tqdm import tqdm
 from matplotlib import pyplot as plt
 from typing import List, Iterable, Union
 from numpy.typing import ArrayLike
@@ -24,7 +25,7 @@ def plotHistogram(lengths: ArrayLike, target, title=None) -> None:
 
     plt.hist(lengths, 150, edgecolor="black", density=True)
     if title is None:
-        plt.title("Histogram over article length")
+        plt.title(f"Histogram over article length")
     plt.xlabel(f"{target} Length")
     plt.ylabel("Frequency")
 
@@ -42,10 +43,12 @@ def plotHistogram(lengths: ArrayLike, target, title=None) -> None:
         0.05, -0.20, textstr, transform=plt.gca().transAxes, fontsize=15, verticalalignment="top", bbox=props
     )
     plt.tight_layout()
+    plt.savefig(f"./analysis/analysis_{target}_{title}.png")
     plt.show()
 
 
-def countLengthArticle(article: Cursor, target: Union["text", "caption"] = "caption") -> int:
+
+def countLengthArticle(article: Cursor, target: str = "caption") -> int:
     length = 0
     if target == "text":
         for section in article["parsed_section"]:
@@ -61,25 +64,30 @@ def countLengthArticle(article: Cursor, target: Union["text", "caption"] = "capt
 
 
 if __name__ == "__main__":
-    target = "caption"
+    target = "text"
     # Connect to database
     client = connect()
-    # db = client["nytimes"] # To connect to the full database
-    db = client["nytimes_sample"]
+    db = client["nytimes"] # To connect to the full database
+    # db = client["nytimes_sample"]
     article_table = db["articles"]
 
     # Preprocess all articles
     preprocessed_articles = []
     lengths = []
     fullNames = []
-    for article in article_table.find().limit(0):
-        length = countLengthArticle(article)
+    for article in tqdm(article_table.find().limit(10000)):
+        if article.get("byline", None) is None:
+            continue
+        if article["byline"].get("person", None) is None:
+            continue
         authorInfo = article["byline"]["person"]
-        lengths.append(length)
         if len(authorInfo) == 0:
             continue
         authorInfo = authorInfo[0]
-        fullName = authorInfo["firstname"] + authorInfo["lastname"] if authorInfo["lastname"] is not None else ""
+        fullName = authorInfo["firstname"] + authorInfo["lastname"] if "lastname" in authorInfo.keys() and authorInfo["lastname"] is not None else ""
+
+        length = countLengthArticle(article)
+        lengths.append(length)
 
         fullNames.append(fullName)
         preprocessed_articles.append((length, authorInfo, fullName))
