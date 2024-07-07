@@ -13,7 +13,7 @@ def connect():
     return client
 
 
-def plotHistogram(lengths: ArrayLike, target, title=None) -> None:
+def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     lengths = lengths if isinstance(lengths, np.ndarray) else np.array(lengths)
     sizeUniqueValues = len(np.unique(lengths.astype(int)))
 
@@ -52,7 +52,7 @@ def plotHistogram(lengths: ArrayLike, target, title=None) -> None:
     plt.show()
 
 
-def countLengthArticle(article: Cursor, target: str = "caption") -> int:
+def countLengthArticle(article: Cursor, target: str) -> int:
     length = 0
     if target == "text":
         for section in article["parsed_section"]:
