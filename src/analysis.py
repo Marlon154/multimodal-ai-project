@@ -1,11 +1,12 @@
+from typing import Iterable, List, Union
+
+import numpy as np
+from matplotlib import pyplot as plt
+from numpy.typing import ArrayLike
 from pymongo import MongoClient, collection
 from pymongo.cursor import Cursor
-import numpy as np
-from tqdm import tqdm
-from matplotlib import pyplot as plt
-from typing import List, Iterable, Union
-from numpy.typing import ArrayLike
 from scipy.stats import gamma
+from tqdm import tqdm
 
 
 def connect():
@@ -20,7 +21,14 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     # shape, loc, scale = gamma.fit(lengths, loc=-80, scale=200)
     shape, loc, scale = gamma.fit(lengths)
     x = np.linspace(0, np.max(lengths), 200)
-    plt.plot(x, gamma.pdf(x, shape, loc, scale), "g-", lw=4, alpha=0.8, label="MLE gamma function")
+    plt.plot(
+        x,
+        gamma.pdf(x, shape, loc, scale),
+        "g-",
+        lw=4,
+        alpha=0.8,
+        label="MLE gamma function",
+    )
 
     plt.hist(lengths, 150, edgecolor="black", density=True)
     if title is None:
@@ -33,8 +41,12 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     std_dev = np.std(lengths)
 
     plt.axvline(mean, color="r", linestyle="dashed", linewidth="2", label="Mean")
-    plt.axvline(mean + std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean + std")
-    plt.axvline(mean - std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean - std")
+    plt.axvline(
+        mean + std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean + std"
+    )
+    plt.axvline(
+        mean - std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean - std"
+    )
 
     plt.legend()
     textstr = f"Mean: {mean:.2f}\nStandard Deviation: {std_dev:.2f}"
@@ -42,10 +54,22 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
     propsDistr = dict(boxstyle="round", facecolor="green", alpha=0.5)
     plt.gca().text(
-        0.05, -0.20, textstr, transform=plt.gca().transAxes, fontsize=15, verticalalignment="top", bbox=props
+        0.05,
+        -0.20,
+        textstr,
+        transform=plt.gca().transAxes,
+        fontsize=15,
+        verticalalignment="top",
+        bbox=props,
     )
     plt.gca().text(
-        0.65, -0.20, textDistr, transform=plt.gca().transAxes, fontsize=15, verticalalignment="top", bbox=propsDistr
+        0.65,
+        -0.20,
+        textDistr,
+        transform=plt.gca().transAxes,
+        fontsize=15,
+        verticalalignment="top",
+        bbox=propsDistr,
     )
     plt.tight_layout()
     plt.savefig(f"./analysis/analysis_{target}_{title}.png")
@@ -73,6 +97,8 @@ def run(article_table, target):
     fullNames = []
     for article in tqdm(article_table.find().limit(0)):
         if article.get("byline", None) is None:
+            continue
+        if isinstance(article["byline"], list):
             continue
         if article["byline"].get("person", None) is None:
             continue
