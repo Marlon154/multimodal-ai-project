@@ -32,7 +32,7 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
         label="MLE gamma function",
     )
 
-    plt.hist(lengths, 150, edgecolor="black", density=True)
+    plt.hist(lengths[lengths < 300], 150, edgecolor="black", density=True)
     if title is None:
         title = f"Histogram over length"
     plt.title(title)
@@ -44,12 +44,8 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     std_dev = np.std(lengths)
 
     plt.axvline(mean, color="r", linestyle="dashed", linewidth="2", label="Mean")
-    plt.axvline(
-        mean + std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean + std"
-    )
-    plt.axvline(
-        mean - std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean - std"
-    )
+    plt.axvline(mean + std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean + std")
+    plt.axvline(mean - std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean - std")
 
     plt.legend()
     p_value = normaltest(lengths)
