@@ -5,8 +5,10 @@ from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 from pymongo import MongoClient, collection
 from pymongo.cursor import Cursor
-from scipy.stats import gamma
+from scipy.stats import gamma, normaltest
 from tqdm import tqdm
+import os
+import json
 
 
 def connect():
@@ -34,6 +36,7 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     if title is None:
         title = f"Histogram over length"
     plt.title(title)
+    plt.xlim(0, limit)
     plt.xlabel(f"{target} Length")
     plt.ylabel("Frequency")
 
@@ -49,8 +52,9 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     )
 
     plt.legend()
-    textstr = f"Mean: {mean:.2f}\nStandard Deviation: {std_dev:.2f}"
-    textDistr = f"Alpha: {shape:.2f}\n Loc:{loc:.2f}\n Scale: {scale:.2f}"
+    p_value = normaltest(lengths)
+    textstr = f"Mean: {mean:.2f}\nStandard Deviation: {std_dev:.2f}\np-value for normal dist.: {p_value[1]:.2f}"
+    textDistr = f"Alpha: {shape:.2f}\nLoc:{loc:.2f}\nScale: {scale:.2f}"
     props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
     propsDistr = dict(boxstyle="round", facecolor="green", alpha=0.5)
     plt.gca().text(
@@ -72,8 +76,23 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
         bbox=propsDistr,
     )
     plt.tight_layout()
-    plt.savefig(f"./analysis/analysis_{target}_{title}.png")
-    plt.show()
+    analysis_dir = os.path.join(os.getcwd(), "analysis")
+    os.makedirs(analysis_dir, exist_ok=True)
+    plt.savefig(f"{analysis_dir}/analysis_{target}_{title}.png")
+    plt.close()
+
+    with open(f"{analysis_dir}/analysis_{target}_{title}.json", "w") as f:
+       json.dump({
+        "mean": mean,
+        "std_dev": std_dev,
+        "normal_test_statistic": p_value[0],
+        "p_value": p_value[1],
+        "alpha": shape,
+        "loc": loc,
+        "scale": scale,
+        },
+           f
+        )
 
 
 def countLengthArticle(article: Cursor, target: str) -> int:
@@ -95,7 +114,7 @@ def run(article_table, target):
     preprocessed_articles = []
     lengths = []
     fullNames = []
-    for article in tqdm(article_table.find().limit(0)):
+    for article in tqdm(article_table.find().limit(0), total=450_000, desc="Analyzing articles"):
         if article.get("byline", None) is None:
             continue
         if isinstance(article["byline"], list):
@@ -134,8 +153,7 @@ def run(article_table, target):
 if __name__ == "__main__":
     # Connect to database
     client = connect()
-    db = client["nytimes"]  # To connect to the full database
-    # db = client["nytimes_sample"]
+    db = client["nytimes"]
     article_table = db["articles"]
 
     run(article_table, "caption")
