@@ -19,9 +19,11 @@ def connect():
 def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     lengths = lengths if isinstance(lengths, np.ndarray) else np.array(lengths)
     sizeUniqueValues = len(np.unique(lengths.astype(int)))
+    mean = np.mean(lengths)
+    std_dev = np.std(lengths)
+    limit = 300 if target == "caption" else 4500
 
-    # shape, loc, scale = gamma.fit(lengths, loc=-80, scale=200)
-    shape, loc, scale = gamma.fit(lengths)
+    shape, loc, scale = gamma.fit(lengths, loc=0, scale=20)
     x = np.linspace(0, np.max(lengths), 200)
     plt.plot(
         x,
@@ -39,9 +41,6 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     plt.xlim(0, limit)
     plt.xlabel(f"{target} Length")
     plt.ylabel("Frequency")
-
-    mean = np.mean(lengths)
-    std_dev = np.std(lengths)
 
     plt.axvline(mean, color="r", linestyle="dashed", linewidth="2", label="Mean")
     plt.axvline(mean + std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean + std")
