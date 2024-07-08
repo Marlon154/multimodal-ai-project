@@ -14,7 +14,7 @@ def connect():
     return client
 
 
-def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
+def plotHistogram(lengths: ArrayLike, target: str, title=None, max_range_histogram) -> None:
     lengths = lengths if isinstance(lengths, np.ndarray) else np.array(lengths)
     sizeUniqueValues = len(np.unique(lengths.astype(int)))
 
@@ -30,7 +30,7 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
         label="MLE gamma function",
     )
 
-    plt.hist(lengths[lengths < 300], 150, edgecolor="black", density=True)
+    plt.hist(lengths[lengths < max_range_histogram], 150, edgecolor="black", density=True)
     if title is None:
         title = f"Histogram over length"
     plt.title(title)
@@ -68,7 +68,7 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
         bbox=propsDistr,
     )
     plt.tight_layout()
-    plt.savefig(f"./analysis/analysis_{target}_{title}.png")
+    # plt.savefig(f"./analysis/analysis_{target}_{title}.png")
     plt.show()
 
 
@@ -86,7 +86,7 @@ def countLengthArticle(article: Cursor, target: str) -> int:
     return length
 
 
-def run(article_table, target):
+def run(article_table, target, max_range_histogram):
     # Preprocess all articles
     preprocessed_articles = []
     lengths = []
@@ -114,7 +114,7 @@ def run(article_table, target):
         fullNames.append(fullName)
         preprocessed_articles.append((length, authorInfo, fullName))
 
-    plotHistogram(lengths, target)
+    plotHistogram(lengths, target, max_range_histogram=max_range_histogram)
 
     nameMarginalized = {name: [] for name in fullNames}
     for articleInfo in preprocessed_articles:
@@ -124,15 +124,15 @@ def run(article_table, target):
     for authorLength in nameMarginalized.values():
         authorLengths.append(sum(authorLength) / len(authorLength))
 
-    plotHistogram(authorLengths, target, title="Average length per author")
+    plotHistogram(authorLengths, target, title="Average length per author", max_range_histogram=max_range_histogram)
 
 
 if __name__ == "__main__":
     # Connect to database
     client = connect()
-    db = client["nytimes"]  # To connect to the full database
-    # db = client["nytimes_sample"]
+    # db = client["nytimes"]  # To connect to the full database
+    db = client["nytimes_sample"]
     article_table = db["articles"]
 
-    run(article_table, "caption")
-    run(article_table, "text")
+    run(article_table, "caption", max_range_histogram=300)
+    run(article_table, "text", max_range_histogram=2000)
