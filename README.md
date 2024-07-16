@@ -3,7 +3,12 @@ Project for Multimodal AI class at TUD by Prof. Anna Rohrbach and Prof. Marcus R
 
 # Preare data
 - make sure that all processed images are in `/data/nytimes/images_processed`
-- prepare the mongodb using the docker compose (check the `docker-compose.yml`)
+
+Further, ensure that the monodb dump is in the folder /dump/nytimes-2020-04-21 or update the path in the docker-compose-restore.yml file.
+To restore the database, the following command can be used:
+```bash
+docker compose --file docker-compose-restore.yml up -d --build
+```
 
 # Docker
 To run the project with docker, the following commands can be used:

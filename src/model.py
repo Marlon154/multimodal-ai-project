@@ -4,19 +4,19 @@ import torch.nn as nn
 from decoder import TransformerDecoder, TransformerDecoderLayer
 
 
-class BadNews(nn.Module):
+class TransformerDecoderNews(nn.Module):
     def __init__(
-        self,
-        vocab_size,
-        d_model,
-        nhead,
-        num_decoder_layers,
-        dim_feedforward,
-        max_seq_length,
-        ncontexts,
-        device,
+            self,
+            vocab_size,
+            d_model,
+            nhead,
+            num_decoder_layers,
+            dim_feedforward,
+            max_seq_length,
+            ncontexts,
+            device,
     ):
-        super(BadNews, self).__init__()
+        super(TransformerDecoderNews, self).__init__()
 
         self.device = device
         self.d_model = d_model

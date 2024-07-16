@@ -18,21 +18,37 @@ logger = logging.getLogger(__name__)
 
 class TaTDatasetReader(Dataset):
     def __init__(
-        self,
-        image_dir: str,
-        mongo_host: str = "localhost",
-        mongo_port: int = 27017,
-        mongo_password: str = "secure_pw",
-        roberta_model: str = "roberta-large",
-        max_length: int = 512,
-        context_before: int = 8,
-        context_after: int = 8,
-        seed: int = 464896,
-        split: str = "train",
-        device: str = "cuda",
-        dtype: torch.dtype = torch.float32,
-        contexts: List[str] = ["article", "image", "faces", "objects"],
+            self,
+            image_dir: str,
+            mongo_host: str = "localhost",
+            mongo_port: int = 27017,
+            mongo_password: str = "secure_pw",
+            roberta_model: str = "roberta-large",
+            max_length: int = 512,
+            context_before: int = 8,
+            context_after: int = 8,
+            split: str = "train",
+            device: str = "cuda",
+            dtype: torch.dtype = torch.float32,
+            contexts: List[str] = ["article", "image", "faces", "objects"],
     ):
+        """
+        Dataset for the NY Times dataset from the Transform and Tell paper.
+
+        Args:
+            image_dir: Directory containing the images.
+            mongo_host: MongoDB host.
+            mongo_port: MongoDB port.
+            mongo_password: MongoDB password default: secure_pw
+            roberta_model: RoBERTa model to use.
+            max_length: Maximum length of the input text.
+            context_before: Number of paragraphs before the image to include.
+            context_after: Number of paragraphs after the image to include.
+            split: Dataset split to use.
+            device: Device to use.
+            dtype: Data type to use.
+            contexts: List of contexts to include.
+        """
         self.client = MongoClient(f"mongodb://root:{mongo_password}@{mongo_host}:{mongo_port}/")
         self.db = self.client.nytimes
         self.context_before = context_before
@@ -73,8 +89,12 @@ class TaTDatasetReader(Dataset):
         self.article_ids_image_pos = []
         # load article ids
         projection = ["_id", "image_positions", "parsed_section"]
-        articles = self.db.articles.find({"split": split}, projection=projection)  # todo remove
-        for article in tqdm(articles, desc="Article Preprocessing", total=434314):
+        splits = ["train", "valid", "test"]
+        lengths = {"train": 433561, "valid": 2978, "test": 8375}
+        if split not in splits:
+            raise ValueError(f"Split must be one of {splits}")
+        articles = self.db.articles.find({"split": split}, projection=projection)
+        for article in tqdm(articles, desc="Article Preprocessing", total=lengths[split]):
             for pos in article["image_positions"]:
                 caption = article["parsed_section"][pos]["text"].strip()
                 if not caption:
@@ -142,6 +162,7 @@ class TaTDatasetReader(Dataset):
                 image_embedding = image_embedding.reshape(-1, 1, 2048)
                 # downsample 2048 -> 1024
                 image_embedding = image_embedding[:, :, ::2].squeeze()
+
             res["contexts"].append(image_embedding)
 
         # Faces

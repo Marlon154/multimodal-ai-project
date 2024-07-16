@@ -9,7 +9,8 @@ from torch.nn import Dropout, LayerNorm, Linear, MultiheadAttention
 from decoder_utils import (detect_is_causal_mask, get_activation_fn,
                            get_clones, get_seq_len)
 
-# --- decoder layer ---
+
+# Decoder layer based on the pytorch implementation.
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -33,19 +34,19 @@ class TransformerDecoderLayer(nn.Module):
     """
 
     def __init__(
-        self,
-        d_model: int,
-        nhead: int,
-        dim_feedforward: int = 2048,
-        dropout: float = 0.1,
-        activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
-        layer_norm_eps: float = 1e-5,
-        batch_first: bool = False,
-        norm_first: bool = False,
-        bias: bool = True,
-        device=None,
-        dtype=None,
-        ncontexts: int = 1,
+            self,
+            d_model: int,
+            nhead: int,
+            dim_feedforward: int = 2048,
+            dropout: float = 0.1,
+            activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
+            layer_norm_eps: float = 1e-5,
+            batch_first: bool = False,
+            norm_first: bool = False,
+            bias: bool = True,
+            device=None,
+            dtype=None,
+            ncontexts: int = 1,
     ) -> None:
         super().__init__()
         self.self_attn = MultiheadAttention(
@@ -106,15 +107,15 @@ class TransformerDecoderLayer(nn.Module):
             self.activation = activation
 
     def forward(
-        self,
-        tgt: Tensor,
-        memory: List[Tensor],
-        tgt_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        tgt_key_padding_mask: Optional[Tensor] = None,
-        memory_key_padding_mask: Optional[Tensor] = None,
-        tgt_is_causal: bool = False,
-        memory_is_causal: bool = False,
+            self,
+            tgt: Tensor,
+            memory: List[Tensor],
+            tgt_mask: Optional[Tensor] = None,
+            memory_mask: Optional[Tensor] = None,
+            tgt_key_padding_mask: Optional[Tensor] = None,
+            memory_key_padding_mask: Optional[Tensor] = None,
+            tgt_is_causal: bool = False,
+            memory_is_causal: bool = False,
     ) -> Tensor:
         """Pass the inputs (and mask) through the decoder layer.
 
@@ -143,11 +144,11 @@ class TransformerDecoderLayer(nn.Module):
 
     # self-attention block
     def _sa_block(
-        self,
-        x: Tensor,
-        attn_mask: Optional[Tensor],
-        key_padding_mask: Optional[Tensor],
-        is_causal: bool = False,
+            self,
+            x: Tensor,
+            attn_mask: Optional[Tensor],
+            key_padding_mask: Optional[Tensor],
+            is_causal: bool = False,
     ) -> Tensor:
         x = self.self_attn(
             x,
@@ -162,13 +163,13 @@ class TransformerDecoderLayer(nn.Module):
 
     # multihead attention block
     def _mha_block(
-        self,
-        x: Tensor,
-        mem: Tensor,
-        attn_mask: Optional[Tensor],
-        key_padding_mask: Optional[Tensor],
-        is_causal: bool = False,
-        index: int = 0,
+            self,
+            x: Tensor,
+            mem: Tensor,
+            attn_mask: Optional[Tensor],
+            key_padding_mask: Optional[Tensor],
+            is_causal: bool = False,
+            index: int = 0,
     ) -> Tensor:
         x = self.context_attentions[index](
             x,
@@ -209,24 +210,24 @@ class TransformerDecoder(nn.Module):
     __constants__ = ["norm"]
 
     def __init__(
-        self,
-        decoder_layer: "TransformerDecoderLayer",
-        num_layers: int,
+            self,
+            decoder_layer: "TransformerDecoderLayer",
+            num_layers: int,
     ) -> None:
         super().__init__()
         self.layers = get_clones(decoder_layer, num_layers)
         self.num_layers = num_layers
 
     def forward(
-        self,
-        tgt: Tensor,
-        memory: List[Tensor],  # this has to be a list of tensors
-        tgt_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        tgt_key_padding_mask: Optional[Tensor] = None,
-        memory_key_padding_mask: Optional[Tensor] = None,
-        tgt_is_causal: Optional[bool] = None,
-        memory_is_causal: bool = False,
+            self,
+            tgt: Tensor,
+            memory: List[Tensor],  # this has to be a list of tensors
+            tgt_mask: Optional[Tensor] = None,
+            memory_mask: Optional[Tensor] = None,
+            tgt_key_padding_mask: Optional[Tensor] = None,
+            memory_key_padding_mask: Optional[Tensor] = None,
+            tgt_is_causal: Optional[bool] = None,
+            memory_is_causal: bool = False,
     ) -> Tensor:
         """Pass the inputs (and mask) through the decoder layer in turn.
 

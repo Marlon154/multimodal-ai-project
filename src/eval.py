@@ -8,7 +8,7 @@ import wandb
 import yaml
 from typing import Dict
 from dataset import TaTDatasetReader, collate_fn
-from model import BadNews
+from model import TransformerDecoderNews
 from transformers import RobertaTokenizer, RobertaModel
 
 
@@ -20,8 +20,8 @@ def load_config(config_path: str) -> Dict:
             raise RuntimeError(f"Error loading config: {exc}")
 
 
-def create_model(config: Dict, vocab_size, device) -> BadNews:
-    return BadNews(
+def create_model(config: Dict, vocab_size, device) -> TransformerDecoderNews:
+    return TransformerDecoderNews(
         vocab_size=vocab_size,
         d_model=config["decoder"]["hidden_size"],
         nhead=config["decoder"]["attention_heads"],

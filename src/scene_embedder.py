@@ -112,10 +112,12 @@ if __name__ == "__main__":
     dataset = ImageDataset(client=client, image_folder="/data/images/", sample=764471)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
 
+
     def store_embeddings(keys, embeddings: torch.Tensor):
         embeddings = embeddings.cpu().numpy().tolist()
         records = [{key: embedding} for key, embedding in zip(keys, embeddings)]
         embedding_table.insert_many(records)
+
 
     layer_from_end = 2
 

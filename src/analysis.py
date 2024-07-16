@@ -1,9 +1,7 @@
-from typing import Iterable, List, Union
-
 import numpy as np
 from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
-from pymongo import MongoClient, collection
+from pymongo import MongoClient
 from pymongo.cursor import Cursor
 from scipy.stats import gamma, normaltest
 from tqdm import tqdm
@@ -77,16 +75,16 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None) -> None:
     plt.close()
 
     with open(f"{analysis_dir}/analysis_{target}_{title}.json", "w") as f:
-       json.dump({
-        "mean": mean,
-        "std_dev": std_dev,
-        "normal_test_statistic": p_value[0],
-        "p_value": p_value[1],
-        "alpha": shape,
-        "loc": loc,
-        "scale": scale,
+        json.dump({
+            "mean": mean,
+            "std_dev": std_dev,
+            "normal_test_statistic": p_value[0],
+            "p_value": p_value[1],
+            "alpha": shape,
+            "loc": loc,
+            "scale": scale,
         },
-           f
+            f
         )
 
 
