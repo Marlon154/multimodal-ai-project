@@ -1,3 +1,7 @@
+"""
+    A simple python script to test the shapes of the transformer decoder layer / model.
+"""
+
 # import torch
 # import torch.nn as nn
 # from transformers import RobertaModel, RobertaTokenizer
@@ -135,7 +139,7 @@ from transformers import RobertaModel, RobertaTokenizer
 
 from dataset import TaTDatasetReader
 from decoder import TransformerDecoder, TransformerDecoderLayer
-from model import BadNews
+from model import TransformerDecoderNews
 
 tokenizer = RobertaTokenizer.from_pretrained("roberta-large")
 roberta_model = RobertaModel.from_pretrained("roberta-large")
@@ -152,7 +156,7 @@ context_lengths = [20, 5, 0, 2]
 context_dims = [1024, 512, 256, 512]
 contexts = [torch.rand((1, context_lengths[idx], d_model), device="cpu") for idx in range(num_contexts)]
 
-model = BadNews(
+model = TransformerDecoderNews(
     vocab_size=vocab_size,
     d_model=d_model,
     nhead=num_heads,

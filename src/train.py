@@ -10,11 +10,14 @@ import wandb
 import yaml
 from typing import Dict
 from dataset import TaTDatasetReader, collate_fn
-from model import BadNews
+from model import TransformerDecoderNews
 from transformers import RobertaTokenizer
 
 
 def load_config(config_path: str) -> Dict:
+    """
+    Load the configuration from a yaml file.
+    """
     with open(config_path, "r") as stream:
         try:
             return yaml.safe_load(stream)
@@ -22,8 +25,11 @@ def load_config(config_path: str) -> Dict:
             raise RuntimeError(f"Error loading config: {exc}")
 
 
-def create_model(config: Dict, vocab_size) -> BadNews:
-    return BadNews(
+def create_model(config: Dict, vocab_size) -> TransformerDecoderNews:
+    """
+    Create the model with the given configuration.
+    """
+    return TransformerDecoderNews(
         vocab_size=vocab_size,
         d_model=config["decoder"]["hidden_size"],
         nhead=config["decoder"]["attention_heads"],
@@ -36,6 +42,9 @@ def create_model(config: Dict, vocab_size) -> BadNews:
 
 
 def setup(rank, world_size):
+    """
+    Setup the distributed training environment.
+    """
     if rank == 0:
         wandb.init(project="MAI-Project")
         print("Prepare DDP")
@@ -46,10 +55,16 @@ def setup(rank, world_size):
 
 
 def cleanup():
+    """
+    Cleanup the distributed training environment.
+    """
     dist.destroy_process_group()
 
 
 def train(rank, world_size, config, resume_from=None):
+    """
+    Training loop for the model.
+    """
     setup(rank, world_size)
 
     torch.cuda.set_device(rank)
@@ -166,6 +181,9 @@ def train(rank, world_size, config, resume_from=None):
 
 
 def save_checkpoint(model, optimizer, epoch, batch, loss, is_best, output_dir, filename):
+    """
+    Save a checkpoint of the model and optimizer.
+    """
     checkpoint = {
         'epoch': epoch,
         'batch': batch,

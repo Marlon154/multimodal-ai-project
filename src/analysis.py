@@ -1,12 +1,12 @@
-from typing import Iterable, List, Union
-
 import numpy as np
 from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
-from pymongo import MongoClient, collection
+from pymongo import MongoClient
 from pymongo.cursor import Cursor
-from scipy.stats import gamma
+from scipy.stats import gamma, normaltest
 from tqdm import tqdm
+import os
+import json
 
 
 def connect():
@@ -14,12 +14,14 @@ def connect():
     return client
 
 
-def plotHistogram(lengths: ArrayLike, target: str, title=None, max_range_histogram) -> None:
+def plotHistogram(lengths: ArrayLike, target: str, max_range_histogram, title=None) -> None:
     lengths = lengths if isinstance(lengths, np.ndarray) else np.array(lengths)
     sizeUniqueValues = len(np.unique(lengths.astype(int)))
+    mean = np.mean(lengths)
+    std_dev = np.std(lengths)
+    limit = 300 if target == "caption" else 4500
 
-    # shape, loc, scale = gamma.fit(lengths, loc=-80, scale=200)
-    shape, loc, scale = gamma.fit(lengths)
+    shape, loc, scale = gamma.fit(lengths, loc=0, scale=20)
     x = np.linspace(0, np.max(lengths), 200)
     plt.plot(
         x,
@@ -34,19 +36,18 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None, max_range_histogr
     if title is None:
         title = f"Histogram over length"
     plt.title(title)
+    plt.xlim(0, limit)
     plt.xlabel(f"{target} Length")
     plt.ylabel("Frequency")
-
-    mean = np.mean(lengths)
-    std_dev = np.std(lengths)
 
     plt.axvline(mean, color="r", linestyle="dashed", linewidth="2", label="Mean")
     plt.axvline(mean + std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean + std")
     plt.axvline(mean - std_dev, color="g", linestyle="dashed", linewidth="2", label="Mean - std")
 
     plt.legend()
-    textstr = f"Mean: {mean:.2f}\nStandard Deviation: {std_dev:.2f}"
-    textDistr = f"Alpha: {shape:.2f}\n Loc:{loc:.2f}\n Scale: {scale:.2f}"
+    p_value = normaltest(lengths)
+    textstr = f"Mean: {mean:.2f}\nStandard Deviation: {std_dev:.2f}\np-value for normal dist.: {p_value[1]:.2f}"
+    textDistr = f"Alpha: {shape:.2f}\nLoc:{loc:.2f}\nScale: {scale:.2f}"
     props = dict(boxstyle="round", facecolor="wheat", alpha=0.5)
     propsDistr = dict(boxstyle="round", facecolor="green", alpha=0.5)
     plt.gca().text(
@@ -68,8 +69,23 @@ def plotHistogram(lengths: ArrayLike, target: str, title=None, max_range_histogr
         bbox=propsDistr,
     )
     plt.tight_layout()
-    # plt.savefig(f"./analysis/analysis_{target}_{title}.png")
-    plt.show()
+    analysis_dir = os.path.join(os.getcwd(), "analysis")
+    os.makedirs(analysis_dir, exist_ok=True)
+    plt.savefig(f"{analysis_dir}/analysis_{target}_{title}.png")
+    plt.close()
+
+    with open(f"{analysis_dir}/analysis_{target}_{title}.json", "w") as f:
+        json.dump({
+            "mean": mean,
+            "std_dev": std_dev,
+            "normal_test_statistic": p_value[0],
+            "p_value": p_value[1],
+            "alpha": shape,
+            "loc": loc,
+            "scale": scale,
+        },
+            f
+        )
 
 
 def countLengthArticle(article: Cursor, target: str) -> int:
@@ -91,7 +107,7 @@ def run(article_table, target, max_range_histogram):
     preprocessed_articles = []
     lengths = []
     fullNames = []
-    for article in tqdm(article_table.find().limit(0)):
+    for article in tqdm(article_table.find().limit(0), total=450_000, desc="Analyzing articles"):
         if article.get("byline", None) is None:
             continue
         if isinstance(article["byline"], list):
@@ -130,8 +146,7 @@ def run(article_table, target, max_range_histogram):
 if __name__ == "__main__":
     # Connect to database
     client = connect()
-    # db = client["nytimes"]  # To connect to the full database
-    db = client["nytimes_sample"]
+    db = client["nytimes"]
     article_table = db["articles"]
 
     run(article_table, "caption", max_range_histogram=300)

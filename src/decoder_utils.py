@@ -21,7 +21,6 @@ def get_clones(module, N):
 
 
 def get_seq_len(src: Tensor, batch_first: bool) -> Optional[int]:
-
     if src.is_nested:
         return None
     else:
@@ -36,9 +35,9 @@ def get_seq_len(src: Tensor, batch_first: bool) -> Optional[int]:
 
 
 def detect_is_causal_mask(
-    mask: Optional[Tensor],
-    is_causal: Optional[bool] = None,
-    size: Optional[int] = None,
+        mask: Optional[Tensor],
+        is_causal: Optional[bool] = None,
+        size: Optional[int] = None,
 ) -> bool:
     """Return whether the given attention mask is causal.
 
@@ -77,9 +76,9 @@ def detect_is_causal_mask(
 
 
 def generate_square_subsequent_mask(
-    sz: int,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+        sz: int,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     r"""Generate a square causal mask for the sequence.
 
