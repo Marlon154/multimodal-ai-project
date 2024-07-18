@@ -76,6 +76,7 @@ def train(rank, world_size, config, resume_from=None):
         mongo_port=config["dataset"]["mongo_port"],
         roberta_model=config["encoder"]["text_encoder"],
         max_length=config["training"]["max_target_positions"],
+        contexts=config["training"]["contexts"],
         device=device,
         split="train",
     )

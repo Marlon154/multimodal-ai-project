@@ -35,3 +35,4 @@ training:
   device: 'cuda'
   local_rank: 3
   dataloader_num_workers: 0
+  contexts: ['image', 'article', 'faces', 'objects', 'scene_embeddings']
