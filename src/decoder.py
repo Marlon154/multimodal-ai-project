@@ -127,10 +127,12 @@ class TransformerDecoderLayer(nn.Module):
             tgt_key_padding_mask: the mask for the tgt keys per batch (optional).
             memory_key_padding_mask: the mask for the memory keys per batch (optional).
         """
+        # ensure that number of contexts is correct
         assert len(memory) == self.ncontexts, "Number of contexts do not match the memory dimension 0"
         x = tgt
         sa_input = self.norm1(x + self._sa_block(x, tgt_mask, tgt_key_padding_mask, tgt_is_causal))
         attentions = []
+        # attend to each context
         for idx, context in enumerate(memory):
             attentions.append(
                 self.context_norms[idx](
@@ -138,6 +140,7 @@ class TransformerDecoderLayer(nn.Module):
                     + self._mha_block(sa_input, context, memory_mask, memory_key_padding_mask, memory_is_causal, idx)
                 )
             )
+        # concatenate attention array
         concat_attention = torch.concat(attentions, dim=-1)
         x = self.norm3(x + self._ff_block(concat_attention))
         return x
