@@ -4,9 +4,7 @@ wandb:
 dataset:
   mongo_host: 'localhost'
   mongo_port: 27018
-  # image_dir: "./data/nytimes/images_processed/"
-  # image_dir: "/data/images"
-  image_dir: "/home/ml-stud14/mai-data/databases/nytimes-images/images_processed/"
+  image_dir: "/data/nytimes/images_processed/"
   seed: 55486448734583
 
 encoder:
