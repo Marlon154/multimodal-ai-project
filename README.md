@@ -35,14 +35,9 @@ docker compose up -f docker-compose-scene-embedder.yml -d --build
 
 ### Docker Specifics
 - Restoring the database currently saves all restored files on a volume (`./export`) and makes the DB persistent
-    - this can be changed by removing the volume from `mongo_db` in `docker-compose.yml`
-    - if this is removed, the `mongo_restore` has to be performed on every startup
-    - if it is not removed, the `mongo_restore` can be commented out/removed after the first startup
-
-### JSON Dump
-- [Download Link](https://drive.google.com/file/d/1HtJzZFfv70t8xzj0L7mYtP3j-KaRgbKC/view?usp=sharing)
-- Scripts can be found in `mongo_db/scripts/mongo_json_dump/`
-- Requires the mongo db running in a docker container
+- this can be changed by removing the volume from `mongo_db` in `docker-compose.yml`
+- if this is removed, the `mongo_restore` has to be performed on every startup
+- if it is not removed, the `mongo_restore` can be commented out/removed after the first startup
 
 ### Dump existing database
 > make sure to adjust database, file and network names
@@ -52,8 +47,7 @@ mongodump --host data-mongo_db-1 --port 27017 --username root --password secure_
 ```
 
 ### MongoDB
-- [Download Link](https://drive.google.com/file/d/1yCZ0Qp21sDa7fnZvI8mnvKvD83UjqaIq/view?usp=sharing)
-    - put the file in `data/dump/`
+- put the dump in `data/dump/`
 - contains three collections: 'articles', 'images', 'objects'
 - all columns can be found in `columns.txt`
 - 'foreign key'-linkage:
@@ -70,6 +64,7 @@ To run the project with docker, the following commands can be used:
 docker compose up -d --build
 ```
 Note to track the runs to W&B a API Key is needed in the environment with the variable name `WANDB_API_KEY`.
+All results will be put into the `output_dir` configured in `config.yml`.
 
 ### Contexts
 To adjust the contexts, make sure to adjust the `config.yml`.
@@ -79,9 +74,6 @@ Following modalities are avaiable:
 - 'faces': embeddings of faces of persons in the image (already in DB Dump)
 - 'objects': embeddings of objects in the image (already in DB Dump)
 - 'scene_embeddings': generated scene embeddings for the image
-
-## Links
-[Overleaf](https://sharelatex.tu-darmstadt.de/project/6654a0cdac6c54d019b61b3a)
 
 ## Authors
 - [Jonas Milkovits](https://github.com/j-milkovits)
