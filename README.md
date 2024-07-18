@@ -1,5 +1,5 @@
 # Multimodal AI Project
-Project for Multimodal AI class at TUD by Prof. Anna Rohrbach and Prof. Marcus Rohrbach.
+Project for Multimodal AI class at TUD by Prof. Anna Rohrbach and Prof. Marcus Rohrbach. In this project we approached the Transform and Tell model, an image captioning model for news articles, investigated possible improvements for the existing architecture, and analyzed the 800k dataset to find new ways in which we can enhance the modalities used in the process of captioning images for news articles.
 
 ## Data
 ### Setup for Sample Testing
