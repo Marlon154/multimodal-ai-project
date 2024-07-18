@@ -12,6 +12,13 @@ from resnet152Places365 import resnet152Places365
 
 
 class ActivationExtractor:
+    """
+    Custom class using pytorch hooks to extract the activations from an arbitrary layer
+    Args:
+        model: instance of torch.nn.Sequential defining the model
+        layer_from_end: integer specifying the layer whos activations should be extracted. if equal to 1 returns activations of the last layer
+    """
+
     def __init__(self, model: torch.nn.Sequential, layer_from_end):
         self.model = model
         model.eval()
@@ -20,7 +27,7 @@ class ActivationExtractor:
         self.activation = None
 
         self.layer_index = len(list(model.children())) - layer_from_end
-        if self.layer_index < 0:
+        if self.layer_index < 1:
             raise ValueError(f"The model does not have {layer_from_end} layers")
 
         self.target_layer = list(model.children())[self.layer_index]
@@ -41,6 +48,11 @@ def connect():
 
 
 class ImageDataset(Dataset):
+    """
+    Torch Dataset wrapper class around the images of NYT800K.
+    Implements all methods required by torch.utils.data.Dataset
+    """
+
     def __init__(self, client, image_folder="/app/data/nytimes/images_processed/", image_extension=".jpg", sample=0):
         self.image_folder = image_folder
         self.image_extension = image_extension
@@ -66,6 +78,10 @@ class ImageDataset(Dataset):
 
 
 def load_model(device="cuda"):
+    '''
+        Instanciates the pretrained ResNet, trained on the Places365 dataset in eval mode and on the target device
+        Returns the model instance
+    '''
     model = resnet152Places365.resnet152_places365
     model.load_state_dict(torch.load("./src/resnet152Places365/resnet152Places365.pth"))
     model.eval()
@@ -86,6 +102,11 @@ def preprocess_image(image):
 
 
 if __name__ == "__main__":
+    '''
+        Generate embeddings for all images in the dataset. 
+        Embeddings are saved into a new collection in the original database
+        The embeddings are the activation of the second to last layer of the Places365 Resnet model
+    '''
     print("Starting the embedding extraction process")
 
     client = connect()
@@ -112,12 +133,10 @@ if __name__ == "__main__":
     dataset = ImageDataset(client=client, image_folder="/data/images/", sample=764471)
     dataloader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False)
 
-
     def store_embeddings(keys, embeddings: torch.Tensor):
         embeddings = embeddings.cpu().numpy().tolist()
         records = [{key: embedding} for key, embedding in zip(keys, embeddings)]
         embedding_table.insert_many(records)
-
 
     layer_from_end = 2
 
