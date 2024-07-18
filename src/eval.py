@@ -38,6 +38,8 @@ def load_model(config, model_path, from_checkpoint=False, device="cuda"):
     tokenizer = RobertaTokenizer.from_pretrained(config["encoder"]["text_encoder"])
     roberta_model = RobertaModel.from_pretrained(config["encoder"]["text_encoder"], device_map=device)
     model = create_model(config, tokenizer.vocab_size, device)
+
+    # Start from checkpoint if available
     if from_checkpoint:
         tmp = torch.load(model_path, map_location=device)
         state_dict = tmp["model_state_dict"]
@@ -53,6 +55,7 @@ def load_model(config, model_path, from_checkpoint=False, device="cuda"):
 def evaluate(config):
     device = "cpu"
 
+    # Load dataset
     eval_dataset = TaTDatasetReader(
         image_dir=config["dataset"]["image_dir"],
         mongo_host=config["dataset"]["mongo_host"],
@@ -64,6 +67,7 @@ def evaluate(config):
     )
     dataloader = DataLoader(eval_dataset, batch_size=1, collate_fn=collate_fn)
 
+    # Load model
     model, tokenizer, roberta_model = load_model(
         config,
         "~/mai-data/output/run5/best_model.pt",
@@ -91,8 +95,8 @@ def evaluate(config):
             # Initialize with start token
             current_seq = torch.full((1, 1), start_token_id, dtype=torch.long, device=device)
 
+            # Generate sequence to be evaluated
             generated_sequence = []
-
             for _ in range(max_length - 1):  # -1 because we started with one token
                 tgt_embeddings = roberta_model(current_seq).last_hidden_state.to(device)
                 output = model.forward(tgt_embeddings=tgt_embeddings, contexts=contexts)
@@ -106,6 +110,7 @@ def evaluate(config):
                 if next_token.item() == end_token_id:
                     break
 
+            # Gather all sequences
             generated_sequence = torch.tensor(generated_sequence, device=device)
 
             all_preds.append(generated_sequence.cpu().tolist())
@@ -153,6 +158,7 @@ def evaluate(config):
         "rouge2": rouge2,
         "rougeL": rougeL,
     })
+
     wandb.finish()
 
 
