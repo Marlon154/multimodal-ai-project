@@ -70,7 +70,6 @@ To run the project with docker, the following commands can be used:
 docker compose up -d --build
 ```
 Note to track the runs to W&B a API Key is needed in the environment with the variable name `WANDB_API_KEY`.
-For the database follow the [instructions from Transform and Tell](https://github.com/alasdairtran/transform-and-tell?tab=readme-ov-file#getting-data).
 
 ### Contexts
 To adjust the contexts, make sure to adjust the `config.yml`.
